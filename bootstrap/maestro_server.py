@@ -35,9 +35,49 @@ from mcp.types import Tool, TextContent
 # Configuration
 # ============================================================
 
+
+def _load_dotenv(path: Path) -> None:
+    """Read KEY=VALUE lines from path into os.environ.
+
+    - Values in the file overwrite any existing os.environ entry, making
+      .env the single authoritative source when present.
+    - Lines starting with # or without '=' are ignored.
+    - Surrounding single/double quotes on the value are stripped.
+    - Silently no-op if path does not exist.
+    """
+    if not path.is_file():
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip()
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in ('"', "'"):
+                val = val[1:-1]
+            os.environ[key] = val
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_load_dotenv(_PROJECT_ROOT / ".env")
+
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 if not DEEPSEEK_API_KEY:
-    print("ERROR: DEEPSEEK_API_KEY environment variable not set", file=sys.stderr)
+    env_path = _PROJECT_ROOT / ".env"
+    if not env_path.is_file():
+        print(
+            f"ERROR: DEEPSEEK_API_KEY not set.\n"
+            f"  Copy {_PROJECT_ROOT}/.env.example to {env_path} and add your key.",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"ERROR: DEEPSEEK_API_KEY not set in {env_path}.\n"
+            f"  Add a line: DEEPSEEK_API_KEY=your-key-here",
+            file=sys.stderr,
+        )
     sys.exit(1)
 
 LOG_DIR = Path(os.environ.get("MAESTRO_LOG_DIR", Path.home() / ".maestro" / "logs"))
