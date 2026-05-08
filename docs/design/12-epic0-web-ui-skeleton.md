@@ -115,11 +115,13 @@ The Web UI process is Python.
   primitives (via `sse-starlette`) and Pydantic-first design are the
   load-bearing reasons — they directly enable Epic 3's live view and remove
   schema duplication with the MCP SDK.
-- **Frontend approach.** Pass-2 ADR (D2). Two camps under consideration:
-  (a) plain HTML + a tiny progressive-enhancement JS layer, no build step;
-  (b) a proper SPA framework. The first reduces install friction and
-  dependency surface; the second scales better for Epic 3's live
-  execution-flow view. To be decided next.
+- **Frontend: no-build HTML with htmx + optional Alpine.js**, vendored as
+  static assets. Decided in pass 2; rationale in
+  [ADR-0002](../adr/0002-frontend-no-build-htmx.md). FastAPI returns HTML
+  fragments; htmx handles AJAX and SSE→DOM swaps declaratively. No
+  Node.js, no build step, no `node_modules`. SPA frameworks were rejected
+  because the UI surface (forms + a live list) doesn't earn their cost
+  and they would force a Node toolchain into Maestro's distribution.
 
 ### Affected modules
 
@@ -175,9 +177,7 @@ tasks.
 ## Open questions
 
 - ~~**OPEN-0.1.** Web framework choice (FastAPI vs Flask vs other). Pass-2 ADR.~~ **Resolved**: FastAPI + uvicorn — see [ADR-0001](../adr/0001-web-framework-fastapi.md).
-- **OPEN-0.2.** Frontend approach (no-build progressive HTML vs proper
-  SPA framework). Pass-2 ADR. Constraint: must support Epic 3's live
-  execution-flow view without becoming a maintenance burden.
+- ~~**OPEN-0.2.** Frontend approach (no-build progressive HTML vs proper SPA framework).~~ **Resolved**: no-build HTML + htmx (+ optional Alpine.js), vendored — see [ADR-0002](../adr/0002-frontend-no-build-htmx.md).
 - **OPEN-0.3.** Port-conflict strategy. Pass-2 decision.
 - **OPEN-0.4.** Where does config live — `~/.maestro/`, project-local
   `.maestro/`, or hybrid? Couples to Epic 1. Pass-2 decision, made jointly
