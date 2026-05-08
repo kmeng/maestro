@@ -1,12 +1,15 @@
 # Design: Epic 3 — team observability
 
 **Issue**: #15
-**Status**: draft
+**Status**: approved
 
-> Pass-1 draft. Establishes the three observability surfaces (dispatch log,
-> execution flow, problem panel) and frames their dependencies on the MCP
-> server. Log storage choice (JSONL vs SQLite), retention policy, and the
-> precise instrumentation invasiveness are deferred to v0.0.3 design pass 2.
+> Approved after pass-2 (D1–D5, 2026-05-08). Log format and schema,
+> instrumentation pattern, retention/truncation/cost, and UI surfaces
+> are all resolved. Implementation tasks T3.1–T3.10 below are PR-sized
+> closed loops, ready to land in order against `v0.0.3` after Epic 0
+> T0.1/T0.3/T0.4 and Epic 1 T1.1/T1.2/T1.6 land first.
+>
+> ADR produced: [0007](../adr/0007-dispatch-log-format-and-schema.md).
 
 ## Problem
 
@@ -439,18 +442,25 @@ request_ids to move entries between "running" and "done."
 
 ## Task breakdown
 
-High-level milestones.
+PR-sized closed loops. **Prerequisites**: Epic 0 T0.1 (paths), T0.3
+(FastAPI), T0.4 (empty-shell page); Epic 1 T1.1 (Pydantic models with
+`RoleId`), T1.2 (config loader), T1.6 (initial inline model
+resolution). T3.5 then replaces T1.6's inline implementation with
+the dispatcher.
 
-- [ ] T3.1 — Pass-2 design: log storage format ADR (JSONL vs SQLite)
-- [ ] T3.2 — Pass-2 design: instrumentation invasiveness decision
-- [ ] T3.3 — Pass-2 design: retention policy default
-- [ ] T3.4 — Pass-2 design: whether v0.0.3 ships the blocked-event type
-- [ ] T3.5 — Implement: log writer in MCP server
-- [ ] T3.6 — Implement: log reader + tailer in Web UI
-- [ ] T3.7 — Implement: history view
-- [ ] T3.8 — Implement: live execution-flow view
-- [ ] T3.9 — Implement: problem panel (failures + config warnings; blocked events conditional on T3.4)
-- [ ] T3.10 — Verify: a Claude Code session that dispatches `cheap_code_gen` is visible in real time in the Web UI; history persists across Web UI restarts; failures show in the problem panel.
+- [ ] **T3.1** — Pydantic event models in `maestro/dispatch_log/events.py` per [ADR-0007](../adr/0007-dispatch-log-format-and-schema.md) (discriminated union on `event_type`). Unit tests on round-trip + serialized-line ≤ 4 KB after truncation. (~1.5h)
+- [ ] **T3.2** — `emit_event` writer in `maestro/dispatch_log/writer.py`: serialize, truncate per D3, append via `os.open`+`os.write`, OSError → stderr fallback. Rotation: size check before write, rename + reopen at 5 MB. No-op import from MCP server startup so the module is exercised. (~2h)
+- [ ] **T3.3** — Reader in `maestro/dispatch_log/reader.py`: one-shot file scan + tail-mode generator. `(inode, offset)` tracking; reopens on inode change. (~1.5h)
+- [ ] **T3.4** — `dispatcher.run(role, input, executor)` in `maestro/dispatcher.py`: ULID `request_id`, model resolution per [Epic 1 D4](13-epic1-team-composition.md#failure-modes-file-level----mcp-server-fallback-semantics), event flow, exception → `dispatch.failed`. (~1.5h)
+- [ ] **T3.5** — Refactor `cheap_code_gen` in `maestro/server.py` to a thin wrapper over `dispatcher.run()`. Replaces Epic 1 T1.6's inline implementation. v0.0.2 fallback behavior preserved exactly. (~1h)
+- [ ] **T3.6** — SSE endpoint `GET /api/dispatch_log/stream` in the Web UI: FastAPI `EventSourceResponse` wrapping the tail-reader. `Last-Event-ID` resume with `(inode, offset)` keys. (~1h)
+- [ ] **T3.7** — History view UI: scan + fold-by-`request_id`, drill-down on click. Chinese labels per D6. (~1.5h)
+- [ ] **T3.8** — Live view UI: htmx `hx-sse`, Running/Completed zones, elapsed-time tick, badge annotations from `fallback.config_absent` events. Chinese labels. (~2h)
+- [ ] **T3.9** — Problem panel UI: filtered view, three categories (failed / refused / grouped fallback), CTAs to team config and wizard. Per-session dismissal. Chinese labels + empty state. (~1.5h)
+- [ ] **T3.10** — End-to-end verification PR. Documented manual smoke covering all three surfaces, plus the v0.0.2 regression check. (~1.5h)
+
+T3.7/T3.8/T3.9 can land in any order among themselves (independent
+UI surfaces sharing the same backend).
 
 ## Acceptance criteria
 
