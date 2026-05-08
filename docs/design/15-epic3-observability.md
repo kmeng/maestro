@@ -161,20 +161,90 @@ tail-reader. Track last-read offset and inode; on poll, if `os.stat`
 shows new bytes, parse from the offset; on inode change, reopen and
 reset.
 
-### MCP server instrumentation
+### MCP server instrumentation — shared dispatcher
 
-The MCP server must write dispatch events to the log location. This is
-the actual change to the MCP runtime in Epic 3. Two design dimensions
-deferred to pass 2:
+Pass-2 D2 settles the instrumentation pattern.
 
-- **Invasiveness.** Wrap each tool function with a decorator? Add an
-  explicit log call inside each tool? A shared dispatcher that all tools
-  go through? The wrap-with-decorator approach keeps tool code clean;
-  the explicit-call approach is more obvious in code. Pass-2 decision.
-- **Failure mode of logging itself.** If the log can't be written
-  (permissions, disk full), what happens to the dispatch? The principle
-  is: dispatch must not fail because logging failed. Log to stderr as a
-  fallback and continue. Pass-2 spec.
+#### Shape
+
+Every MCP tool that worker-dispatches goes through one shared
+function: `dispatcher.run()`. The MCP tool itself stays thin:
+
+```python
+def cheap_code_gen(prompt: str) -> str:
+    return dispatcher.run(
+        role=RoleId.JUNIOR,
+        input=prompt,
+        executor=lambda model: call_model(model, prompt),
+    )
+```
+
+`dispatcher.run()` owns the full dispatch lifecycle:
+
+1. Generate `request_id` (ULID for sortability).
+2. Resolve the model for the role per
+   [Epic 1 D4](13-epic1-team-composition.md#failure-modes-file-level----mcp-server-fallback-semantics):
+   - `team.yaml` absent → emit `dispatch.fallback.config_absent`,
+     use v0.0.2 default model
+   - `team.yaml` invalid → emit `dispatch.refused.config_invalid`,
+     return structured error to Claude Code, no further events
+   - valid → use `roles.<role>.model`
+3. Emit `dispatch.start` with the resolved model.
+4. Call the executor lambda.
+5. On success: emit `dispatch.end`. On exception: emit
+   `dispatch.failed`.
+6. Return the result (or structured error if refused).
+
+Why a shared dispatcher rather than per-tool decorators or
+inline-explicit logging:
+
+- **Consistency by construction.** Every dispatch passes through one
+  function. Forgetting to emit an event becomes structurally
+  impossible. Inconsistent `input_summary` formatting becomes
+  impossible.
+- **Epic 1 D4's fallback/refuse logic naturally lives here** — the
+  dispatcher knows the role, knows the model, knows when to fall
+  back. Per-tool implementation would duplicate that logic.
+- **Extensible.** Future tools (post-v0.0.3) plug in with three
+  lines: tool wrapper, role binding, executor lambda.
+- **Testable.** The dispatcher is one unit, tested once. Tools become
+  test-light.
+
+#### Logging failure must not fail dispatch
+
+If the log file is unwritable (permissions, disk full, parent
+directory gone), `emit_event` logs to stderr and returns:
+
+```python
+def emit_event(event: DispatchEvent) -> None:
+    line = event.model_dump_json() + "\n"
+    line = _truncate_if_oversize(line)  # D3 truncation rules
+    try:
+        with open(log_path, "ab") as f:
+            f.write(line.encode())
+    except OSError as e:
+        sys.stderr.write(f"maestro: dispatch log write failed: {e}\n")
+```
+
+The dispatch returns its real result to Claude Code as if logging
+hadn't happened. Observability degrades gracefully — the user sees
+nothing in the Web UI for that dispatch but `cheap_code_gen` still
+worked. Stderr surfaces the error to whoever is watching the MCP
+server's log.
+
+Pass-3 nice-to-have (not v0.0.3): the Web UI detects "log file
+present but has gaps" and surfaces it. v0.0.3 ships without that.
+
+#### Module layout
+
+- `maestro/dispatch_log/` — Pydantic event models (D1), the writer
+  (`emit_event`), the reader/tail logic (consumed by the Web UI).
+- `maestro/dispatcher.py` — `dispatcher.run()`. Imports from
+  `dispatch_log` and from `team` (Epic 1's models for the
+  `team.yaml` resolution).
+- `maestro/server.py` — existing MCP entry point. `cheap_code_gen`
+  becomes a thin wrapper that delegates to `dispatcher.run()`. Other
+  tools added in future releases follow the same pattern.
 
 ### Event correlation
 
@@ -241,9 +311,7 @@ High-level milestones.
 - ~~**OPEN-3.1.** Log storage: JSONL vs SQLite.~~ **Resolved**: JSONL at `<project-root>/.maestro/logs/dispatch.jsonl`, append-only, line-level atomic via `O_APPEND`. See [ADR-0007](../adr/0007-dispatch-log-format-and-schema.md).
 - **OPEN-3.2.** Retention policy default. Rotate-by-age, rotate-by-count,
   rotate-by-size, or no rotation? Pass-2 decision.
-- **OPEN-3.3.** Instrumentation invasiveness — decorator wrapping vs
-  explicit log calls vs shared dispatcher. Pass-2 decision; affects how
-  much MCP server code changes.
+- ~~**OPEN-3.3.** Instrumentation invasiveness.~~ **Resolved**: shared dispatcher (`dispatcher.run()`). MCP tools become thin wrappers; the dispatcher owns request-id generation, model resolution per Epic 1 D4, event emission, and failure handling. Logging failure does not fail dispatch — `emit_event` falls back to stderr. Detail in the "MCP server instrumentation" subsection.
 - ~~**OPEN-3.4.** Whether v0.0.3 introduces a "blocked / need human input" event type.~~ **Resolved**: deferred to v0.0.4+. v0.0.3's worker is the unchanged v0.0.2 `cheap_code_gen`; shipping the event type would require worker behavior change. Re-trigger: any richer worker that supports human-in-the-loop signaling. See [ADR-0007](../adr/0007-dispatch-log-format-and-schema.md).
 - **OPEN-3.5.** Truncation rules for large input/output payloads in the
   history view. Pass-2 UX call.
