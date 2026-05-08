@@ -43,41 +43,119 @@ demonstration.
 
 ## Functional design
 
-The Web UI gains three surfaces tied to dispatch activity:
+The Web UI gains three surfaces tied to dispatch activity. All three
+read the same `dispatch.jsonl` — no state duplication. UX decided in
+pass-2 D4.
 
-### Dispatch log (history)
+### Surface 1 — History view (passive)
 
-A reverse-chronological list of every `cheap_code_gen` invocation (and
-future workers, when they exist). Each entry shows: timestamp, role
-that handled it, member alias, model used, brief input summary, brief
-output summary, success / failure, duration, optional cost.
+Reverse-chronological list of dispatches. Each row folds a
+`request_id`'s events into a single line:
 
-Clicking an entry expands to full input and full output (truncation rules
-TBD in pass 2 — payloads can be large).
+| Column | Value |
+|---|---|
+| Status | ✓ success / ✗ failed / ⊘ refused / ⤴ fallback-used |
+| Time | "14:23:11" — full timestamp on hover |
+| Role + member | "Junior — Jamie" |
+| Model | `deepseek-coder` |
+| Duration | "1.4s" |
+| Cost (optional) | "230→1420 tok" — "—" if absent |
+| Summary | First 60 chars of `input_summary` |
 
-### Execution flow (live)
+Drill-down on click: full `input_summary`, `output_summary` (with a
+"(truncated)" note if the log entry was capped per D3),
+`error_message` if failed, validation details if refused.
 
-While a Claude Code session is running and dispatching to Maestro, the
-Web UI shows a live view: which member is currently executing, ordered
-by dispatch time, with state (queued / running / done / failed). New
-invocations appear; running ones tick their elapsed time; completed ones
-move to the history.
+**Source**: one-shot read of current `dispatch.jsonl` on page load;
+events folded by `request_id` into rows. No tail.
 
-The live view does not require the Web UI to know about Claude Code — it
-reads the same dispatch log file, tailing newest entries.
+**v0.0.3 reads only the current file.** Rotated files (`dispatch.<ts>.jsonl`)
+exist on disk but aren't loaded; manual access only. Pass-3
+enhancement: scroll-back loads older files.
 
-### Problem panel
+### Surface 2 — Live execution flow (active)
 
-A dedicated tab listing entries that need human attention:
+Two zones:
 
-- Failed invocations.
-- Invocations the worker explicitly returned a "blocked / need human
-  input" status for (this is a v0.0.3 contract addition — see Technical
-  design).
-- Configuration warnings surfaced from earlier (e.g., Epic 1's "config
-  missing, fell back to v0.0.2 defaults").
+- **Running** — dispatches with `dispatch.start` but no terminal
+  event yet. Each card shows role/member/model + elapsed time
+  (ticks once per second).
+- **Completed (recent)** — last ~10 dispatches with terminal events.
+  Auto-scrolls into the history view as the user navigates away.
 
-Items in the problem panel can be dismissed (acknowledged) or kept open.
+**Source**: SSE-tailed `dispatch.jsonl`. The Web UI subscribes via
+htmx's `hx-sse` ([ADR-0002](../adr/0002-frontend-no-build-htmx.md)).
+FastAPI serves the stream via `EventSourceResponse`
+([ADR-0001](../adr/0001-web-framework-fastapi.md)).
+
+Per-event UI behavior:
+
+- `dispatch.start` → render new card in **Running**.
+- `dispatch.end` / `dispatch.failed` → move card from Running to
+  Completed.
+- `dispatch.fallback.config_absent` → annotate the corresponding
+  `request_id`'s card with a "↩ fell back" badge.
+- `dispatch.refused.config_invalid` → render directly in Completed
+  as a refused row (no Running phase).
+
+**Reconnect**: SSE event IDs are `(file_inode, byte_offset)`. The
+client reconnects with `Last-Event-ID`; the server resumes from the
+recorded offset. If the file inode has changed (rotation), the
+server reopens; the client receives a synthetic "rotated" marker
+and clears any open-Running state for events older than the new
+file.
+
+### Surface 3 — Problem panel
+
+Dedicated tab listing items that need user attention. Three
+categories:
+
+| Category | Source events | Per-row content |
+|---|---|---|
+| Failed dispatches | `dispatch.failed` | timestamp, role, `error_kind`, `error_message` |
+| Config refusals | `dispatch.refused.config_invalid` | timestamp, validation field, message, **CTA** "Open team config to fix" → routes to Epic 1's role-catalog view |
+| Config fallbacks | `dispatch.fallback.config_absent` | grouped: "N dispatches used the v0.0.2 fallback model. Configure your team to use the model you want." **CTA** "Configure team" → opens Epic 1's wizard |
+
+**Dismissal**: per-browser-session only — clicking acknowledge fades
+the row but doesn't persist. v0.0.3 does not write dismissal state
+back to disk. (Persisting would require a sidecar file; the cost
+isn't justified for a UX nicety in v0.0.3.)
+
+**Empty state**: a Chinese reassurance message; shown when zero items
+across all three categories.
+
+### State derivation, not duplication
+
+The Web UI maintains no separate "current state" database. Each view
+derives from the log on demand:
+
+- History view → one-shot scan of current `dispatch.jsonl`.
+- Live view → SSE-subscribed tail of the same file.
+- Problem panel → filtered scan of the same file (failed + refused +
+  fallback events only).
+
+A user opening the Web UI cold immediately sees: live view empty (no
+in-flight dispatches), history populated from past sessions, problem
+panel populated from past problems.
+
+### Performance budget
+
+- History view full scan: 5 MB worst case (D3 rotation cap),
+  sub-100 ms in Python.
+- SSE event delivery: events surface within ~1 s of MCP-server emit
+  (1 Hz `os.stat` polling on the file in v0.0.3). Inotify/kqueue is
+  pass-3.
+- Problem-panel filter: linear scan, identical to history.
+
+### Language (D6 cross-cutting)
+
+- All UI labels (column headers, badges, CTA buttons, empty-state
+  messages) in **Chinese**.
+- Event payload content (`input_summary`, `output_summary`,
+  `error_message`, etc.) rendered **verbatim**. The user's prompt
+  may itself be any language; Maestro doesn't translate it.
+- `event_type` strings are machine identifiers, never shown to the
+  user — the UI uses Chinese labels mapped from event types.
 
 ## Technical design
 
