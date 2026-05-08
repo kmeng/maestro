@@ -1,12 +1,16 @@
 # Design: Epic 0 — local Web UI skeleton
 
 **Issue**: #12
-**Status**: draft
+**Status**: approved
 
-> Pass-1 draft. Establishes the process model and the shape of the
-> shared-state contract. Tech-stack choices, port-conflict strategy, and the
-> precise file layout are deferred to v0.0.3 design pass 2 — almost certainly
-> the first ADR trigger of v0.0.3.
+> Approved after pass-2 (D1–D6, 2026-05-08). Tech-stack, shared-state
+> layout, port-conflict strategy, and dev-mode policy are all resolved.
+> Implementation tasks T0.1–T0.7 below are PR-sized closed loops, ready
+> to land in order against `v0.0.3`.
+>
+> ADRs produced: [0001](../adr/0001-web-framework-fastapi.md),
+> [0002](../adr/0002-frontend-no-build-htmx.md),
+> [0003](../adr/0003-shared-state-file-layout.md).
 
 ## Problem
 
@@ -211,15 +215,17 @@ post-v0.0.3.
 
 ## Task breakdown
 
-High-level milestones. Pass-2 of this design will split each into PR-sized
-tasks.
+PR-sized closed loops. Each PR keeps `main` runnable. Order is the
+dependency order; T0.6 may land in parallel with T0.3–T0.5 since it
+doesn't touch the Web UI process.
 
-- [ ] T0.1 — Pass-2 design: tech-stack ADR (web framework + frontend approach)
-- [ ] T0.2 — Pass-2 design: shared-state file layout (config home path, dispatch log path)
-- [ ] T0.3 — Implement: minimal HTTP server with empty-shell page, runnable via a single command
-- [ ] T0.4 — Implement: shared paths module, imported (no-op) from MCP server entry point
-- [ ] T0.5 — Implement: port-conflict fallback strategy
-- [ ] T0.6 — Verify: MCP `cheap_code_gen` path is unchanged end-to-end
+- [ ] **T0.1** — Add `maestro/paths.py` exposing the [ADR-0003](../adr/0003-shared-state-file-layout.md) path API. Imported by a no-op call from the MCP server entry point so the module isn't orphaned. Unit tests on path functions; smoke: MCP server still starts. (~1h)
+- [ ] **T0.2** — Extend the `.env` loader to also check `~/.maestro/credentials.env`. Precedence: process env → project `.env` → user file. Unit tests on precedence; smoke: existing project `.env` resolution unchanged. (~30m)
+- [ ] **T0.3** — Add `fastapi`, `uvicorn`, `sse-starlette` to `requirements.txt`. Add `maestro/webui/__init__.py` with a minimal app: health endpoint and version endpoint. No real page yet. Unit tests on endpoints; smoke: `curl /health` returns 200. (~1h)
+- [ ] **T0.4** — Add empty-shell page at `GET /`. Vendor `htmx.min.js` under `webui/static/vendor/`. Page links htmx but has no interactivity yet — Maestro-branded placeholder. Smoke: open URL in browser, confirm page loads. (~1h)
+- [ ] **T0.5** — Add launcher: console script (e.g., `maestro-webui`) wired into `pyproject.toml`, plus port-conflict strategy from D4 (default `19830`, scan +1..+10, error at cap). Unit test the port-scan helper; smoke: run with another process on `19830`, confirm fallback. (~1.5h)
+- [ ] **T0.6** — Add `scripts/dev_emit_dispatch.py` — stub version that writes a placeholder event into `<project>/.maestro/logs/`. Real schema lands in Epic 3; this PR establishes the script and CLI shape. Smoke: run script, verify file appears. (~30m)
+- [ ] **T0.7** — End-to-end verification PR. Documented manual smoke test: clean install → `pip install -e .` → `maestro-webui` → browser at `http://localhost:19830` → page renders → `cheap_code_gen` from a Claude Code session still works unchanged. May land as a CI-runnable script if feasible. (~1h)
 
 ## Acceptance criteria
 
