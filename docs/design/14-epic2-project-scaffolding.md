@@ -128,24 +128,69 @@ changes ship with a migration path. H2 heading (`##`) so it slots in
 regardless of the host file's heading style. English content — Claude
 Code is the reader.
 
-### Take-over mechanics
+### Scaffolding engine — operation model
 
-For each candidate template file, the take-over flow performs:
+Both flows (new-project and take-over) run through one engine
+parameterized by the file list (D1) and the merge mechanics decided
+in pass-2 D2. Full rationale in
+[ADR-0006](../adr/0006-take-over-merge-mechanics.md).
 
-1. **Existence check.** If the destination doesn't exist, scheduled to
-   add (subject to user confirmation).
-2. **Content match check.** If it exists and matches the template, no-op
-   (preserves idempotence).
-3. **Mergeable file check.** For specific files (CLAUDE.md is the
-   canonical case), if it exists and doesn't already contain Maestro's
-   delimited section, scheduled to append the section. If it already
-   contains the section, no-op or update-in-place when content differs.
-4. **Conflict.** Any other case (non-mergeable file with conflicting
-   content) is reported to the user as a manual decision, never
-   auto-resolved.
+#### Operation taxonomy
 
-The plan is shown to the user before any write. The user can deselect
-individual items.
+Each candidate file resolves to exactly one operation:
+
+| Op | Trigger |
+|---|---|
+| `CREATE` | Destination doesn't exist → atomic write of rendered template |
+| `APPEND_DELIMITED` | Destination exists, no Maestro section, and file is mergeable (CLAUDE.md only) → atomic append of delimited section |
+| `NOOP` | Destination already matches the would-be result |
+| `CONFLICT` | Anything else — surfaced to the user, never auto-resolved |
+
+Plan generation walks the file list once and produces an ordered list
+of `(file, op, detail)` tuples for the plan preview UX (D3).
+
+#### Idempotence
+
+- **Pure-replacement files** (`.maestro/.gitignore`, `.gitignore`,
+  `README.md`): exact-bytes match between disk and rendered template.
+- **Mergeable files** (CLAUDE.md): delimiter scan for
+  `<!-- maestro:start v=1 -->` … `<!-- maestro:end v=1 -->` blocks.
+  Whitespace stripped at the section boundaries before comparison;
+  any other byte difference inside the block is `CONFLICT`. Older or
+  unknown `v=N` versions also `CONFLICT` (no auto-migration in
+  v0.0.3).
+
+#### Atomicity
+
+Per-file atomic via `os.replace` (write-then-rename). Not
+transactional across multiple files — partial-apply is bounded by
+the small file lists (4 max for new-project, 2 for take-over) and
+recoverable by an idempotent re-run.
+
+#### Pre-flight checks
+
+Run before any plan can be applied:
+
+1. Project root resolves and is a directory.
+2. Git state matches the flow: take-over requires `.git/`;
+   new-project requires empty / non-existent directory.
+3. (Take-over only) `git status --porcelain` is empty — refuse on a
+   dirty tree with a clear "commit, stash, or explicitly confirm"
+   message.
+4. (Take-over only) No unexpected `.maestro/` content beyond what
+   take-over would produce — surface as `CONFLICT` rows.
+
+#### What the engine does not do
+
+- **No in-place rewriting.** Every write is full-file replacement of
+  rendered content (mergeable files splice the new section in in
+  memory before atomic write).
+- **No backup files.** Pre-flight uncommitted-changes check makes git
+  itself the rollback mechanism.
+- **No auto-resolution of conflicts.** Every `CONFLICT` is the user's
+  decision via the plan preview.
+- **Line endings:** writes always LF. Reads tolerate CRLF by
+  normalizing to LF for comparison.
 
 ### Affected modules
 
@@ -203,11 +248,8 @@ High-level milestones.
 ## Open questions
 
 - ~~**OPEN-2.1.** Exact membership of the "collaboration essential" template set vs the "internal-project convention" template set.~~ **Resolved**: take-over set is `.maestro/.gitignore` + delimited CLAUDE.md section; new-project set adds `.gitignore` + `README.md` stub. Internal-project conventions are explicitly excluded. See [ADR-0005](../adr/0005-scaffolding-template-set.md).
-- **OPEN-2.2.** Merge UX for pre-existing CLAUDE.md (and any other
-  mergeable file). Delimited section markers? Section header version?
-  Pass-2 design.
-- **OPEN-2.3.** Idempotence implementation. Content match by hash, by
-  exact bytes, or by delimited-section-aware comparison? Pass-2 decision.
+- ~~**OPEN-2.2.** Merge UX for pre-existing CLAUDE.md.~~ **Resolved**: HTML-comment delimiters `<!-- maestro:start v=1 -->` / `<!-- maestro:end v=1 -->`, versioned for future migration. See [ADR-0005](../adr/0005-scaffolding-template-set.md) (format) and [ADR-0006](../adr/0006-take-over-merge-mechanics.md) (mechanics).
+- ~~**OPEN-2.3.** Idempotence implementation.~~ **Resolved**: byte-match for replacement files; delimiter scan with leading/trailing whitespace tolerance for mergeable files; older or unknown `v=N` versions are `CONFLICT`. See [ADR-0006](../adr/0006-take-over-merge-mechanics.md).
 - **OPEN-2.4.** Version-skew between user's project and a Maestro upgrade.
   When Maestro v0.0.4 changes a template, what happens? Options: (a) leave
   user projects alone, document the migration; (b) detect drift and offer
