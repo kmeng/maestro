@@ -62,15 +62,44 @@ This means:
 
 ### Branches
 
+This project distinguishes **remote (origin)** and **local** branches sharply.
+
+#### Remote (origin)
+
+Origin carries only release branches:
+
+| Branch | Purpose |
+|---|---|
+| `main` | The released line. Updated only via merged release PRs. |
+| `v0.X.Y` | Active release-integration branch. Receives the next release's commits. Created from `main` at the start of a release window; deleted from origin after its release ships and `main` advances. |
+
+No feature, fix, or task branches appear on origin. The remote stays uncluttered: humans browsing origin see only the release lineage.
+
+#### Local
+
+Local branches are unrestricted in number and name. Suggested conventions (not enforced):
+
 | Prefix | Use for |
 |---|---|
-| `feature/<n>-<slug>` | new functionality |
+| `feature/<n>-<slug>` | issue-aligned work |
 | `fix/<n>-<slug>` | bug fix |
-| `refactor/<n>-<slug>` | internal restructure, no behavior change |
+| `refactor/<n>-<slug>` | internal restructure |
 | `docs/<n>-<slug>` | documentation only |
-| `bootstrap/<version>` | special, only for v0.0.x foundational work |
+| `task/<n>-<step>` | sub-step within a larger feature |
 
-`<n>` is the GitHub issue number. `<slug>` is a short kebab-case name.
+`<n>` is the GitHub issue number. `<slug>` is short kebab-case. These names never appear on origin.
+
+#### Push protocol
+
+A local feature or task branch merges (preferred: `--no-ff`) into the local release branch (`v0.X.Y`). Only the release branch is pushed. Local sub-branches are deleted (`-D` after squash semantics, `-d` after non-squash) once merged.
+
+#### PR protocol
+
+The only PR that appears on origin is the release PR (`v0.X.Y → main`). Feature-level review happens locally — in commit history of the release branch, in design docs under `docs/design/`, and in the maintainer-AI conversation transcripts.
+
+#### Historical note
+
+In the v0.0.2 cycle (issue #6), the project briefly used a three-tier model: feature branches (`feature/6-env-loading`) were pushed to origin and reviewed via PR (`feature/* → v0.0.2`). The lived experience clarified that this added remote noise without payoff for solo / AI-paired work. The current policy supersedes that.
 
 ### Commit messages (Conventional Commits)
 
@@ -99,12 +128,16 @@ Use the model name actually responsible. Multiple co-authors are allowed.
 
 ## Pull Request rules
 
-- One PR = one task = one closed loop
+- One PR = one closed loop
 - PR description must include: linked issue, what changed, how to verify
 - Squash-merge to main; no merge commits in main
 - PR > 400 lines: justify in the description or split
 
+In the current project phase, "PR" practically refers to the release PR (`v0.X.Y → main`). Feature-level closed loops happen in local commits of the release branch and don't surface as separate origin PRs (see the branch policy above). The "one closed loop per PR" rule still applies — at the release granularity.
+
 In solo phase, the maintainer reviews their own PRs after a 24-hour cooling-off period, OR explicitly self-approves with rationale in the PR description.
+
+For PR descriptions that should auto-close an issue on merge, place the closing keyword (`Closes`, `Fixes`, `Resolves`) on its own line in plain prose, not inside a markdown heading, list, or code block. Auto-close only triggers when the PR base is the default branch (`main`).
 
 ---
 
@@ -221,6 +254,7 @@ A change is not done until the docs reflect it.
 | `docs/design/<n>-...md` | Per-feature design | At step 3 (DESIGN), before code |
 | `docs/adr/NNNN-...md` | Architecture decisions | When triggers above met |
 | `docs/known-issues.md` | Untestable bugs, gotchas | When found |
+| `docs/journal/<YYYY-MM-DD>.md` | Per-session run log; cross-session shared memory | Each working session, at session end |
 | `BUILD_LOG.md` | AI authorship + cost log | Every AI-assisted release |
 | `ROADMAP.md` | Where we're going | Major milestones |
 
