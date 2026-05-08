@@ -106,19 +106,20 @@ A localhost HTTP server that:
 - Runs in the foreground of the user-launched process. No daemonization in
   v0.0.3.
 
-### Tech-stack choice — deferred
+### Tech-stack choice
 
-The Web UI process is Python. The choices below are pass-2 ADR territory:
+The Web UI process is Python.
 
-- Web framework. FastAPI is a strong candidate (Pythonic, async, good docs,
-  serves static assets, integrates with Pydantic which the MCP server may
-  also benefit from). Flask is the conservative fallback. The decision is a
-  pass-2 ADR.
-- Frontend. Two camps: (a) plain HTML + a tiny progressive-enhancement JS
-  layer, no build step; (b) a proper SPA framework (Svelte, Vue, React).
-  The first reduces install friction and dependency surface; the second
-  scales better for Epic 3's live execution-flow view. The decision is a
-  pass-2 ADR.
+- **Web framework: FastAPI**, served by uvicorn. Decided in pass 2; rationale
+  in [ADR-0001](../adr/0001-web-framework-fastapi.md). FastAPI's native SSE
+  primitives (via `sse-starlette`) and Pydantic-first design are the
+  load-bearing reasons — they directly enable Epic 3's live view and remove
+  schema duplication with the MCP SDK.
+- **Frontend approach.** Pass-2 ADR (D2). Two camps under consideration:
+  (a) plain HTML + a tiny progressive-enhancement JS layer, no build step;
+  (b) a proper SPA framework. The first reduces install friction and
+  dependency surface; the second scales better for Epic 3's live
+  execution-flow view. To be decided next.
 
 ### Affected modules
 
@@ -173,8 +174,7 @@ tasks.
 
 ## Open questions
 
-- **OPEN-0.1.** Web framework choice (FastAPI vs Flask vs other). Pass-2
-  ADR.
+- ~~**OPEN-0.1.** Web framework choice (FastAPI vs Flask vs other). Pass-2 ADR.~~ **Resolved**: FastAPI + uvicorn — see [ADR-0001](../adr/0001-web-framework-fastapi.md).
 - **OPEN-0.2.** Frontend approach (no-build progressive HTML vs proper
   SPA framework). Pass-2 ADR. Constraint: must support Epic 3's live
   execution-flow view without becoming a maintenance burden.
