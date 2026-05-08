@@ -1,12 +1,17 @@
 # Design: Epic 2 — project scaffolding
 
 **Issue**: #14
-**Status**: draft
+**Status**: approved
 
-> Pass-1 draft. Establishes the new-project vs take-over distinction and the
-> additive / scoped / idempotent guarantees for take-over mode. The list of
-> "collaboration essential" template files, the merge UX for pre-existing
-> files, and version-skew handling are deferred to v0.0.3 design pass 2.
+> Approved after pass-2 (D1–D5, 2026-05-08). Template set membership,
+> take-over merge mechanics, plan-preview UX, project registry
+> semantics, and task breakdown are all resolved. Implementation tasks
+> T2.1–T2.9 below are PR-sized closed loops, ready to land in order
+> against `v0.0.3` after Epic 0 T0.1/T0.3/T0.4 land first (T2.8 also
+> depends on Epic 1 T1.4).
+>
+> ADRs produced: [0005](../adr/0005-scaffolding-template-set.md),
+> [0006](../adr/0006-take-over-merge-mechanics.md).
 
 ## Problem
 
@@ -337,17 +342,22 @@ list.
 
 ## Task breakdown
 
-High-level milestones.
+PR-sized closed loops. Each PR keeps `main` runnable. **Prerequisite**:
+Epic 0 T0.1 (paths module), T0.3 (FastAPI app), T0.4 (empty-shell page)
+must land before T2.1 starts. T2.8 also depends on Epic 1 T1.4 (wizard
+UI).
 
-- [ ] T2.1 — Pass-2 design: split governance corpus into "collaboration essential" and "internal-project convention" template sets, with rationale per file
-- [ ] T2.2 — Pass-2 design: merge UX for pre-existing files (CLAUDE.md is the canonical case)
-- [ ] T2.3 — Pass-2 design: idempotence mechanism (delimited sections, content hashing, etc.)
-- [ ] T2.4 — Implement: template set as packaged data
-- [ ] T2.5 — Implement: new project flow (init git + lay down full layout)
-- [ ] T2.6 — Implement: take-over flow plan generation
-- [ ] T2.7 — Implement: take-over flow plan application
-- [ ] T2.8 — Implement: Web UI for project selection + plan preview + apply
-- [ ] T2.9 — Verify: take-over on a known existing project (Maestro itself? a sample real-world repo?) leaves the project working and adds only the agreed scope.
+- [ ] **T2.1** — Scaffolding engine in `maestro/scaffold/`: operation types (`CREATE` / `APPEND_DELIMITED` / `NOOP` / `CONFLICT`) per [ADR-0006](../adr/0006-take-over-merge-mechanics.md), plan-generation logic. Pure data + logic, no I/O. Unit tests against synthetic file states. (~2h)
+- [ ] **T2.2** — File I/O layer: atomic write-then-rename, CRLF-tolerant reads, apply executor that walks a plan and emits per-file events. No-op call from T0.3's webui module so the module is exercised. Integration tests applying plans to temp directories. (~1.5h)
+- [ ] **T2.3** — Pre-flight checks (directory existence, git state, clean tree, unexpected `.maestro/`). Wired into plan generation — failures appear as plan rows. (~1h)
+- [ ] **T2.4** — Template content as packaged data per [ADR-0005](../adr/0005-scaffolding-template-set.md): CLAUDE.md Maestro section template body, README stub, `.gitignore`, `.maestro/.gitignore`. Renderer substitutes Maestro version into delimiters. Byte-stable output for fixed inputs. (~1h)
+- [ ] **T2.5** — Project registry module — read/write `~/.maestro/projects.json` per D4 schema and write semantics. Independent of the scaffolding engine. Unit tests on read/write/prune/upsert + corruption tolerance. (~1h)
+- [ ] **T2.6** — HTTP API endpoints: `POST /api/scaffold/plan` returns plan JSON (file rows + pre-flight banner); `POST /api/scaffold/apply` is an SSE endpoint streaming per-file events + `plan_complete`. On `plan_complete`, registers the project (T2.5). (~1.5h)
+- [ ] **T2.7** — Web UI screens: project picker, plan preview (3-layer disclosure), per-row drill-down with diff rendering for `APPEND_DELIMITED`, conflict-resolution UX (Skip / Open file). Copy in Chinese per D6. (~2h)
+- [ ] **T2.8** — Wire auto-launch of Epic 1's wizard after successful apply. Depends on Epic 1 T1.4. (~30m)
+- [ ] **T2.9** — End-to-end verification PR. Documented manual smoke: new-project flow → wizard → `cheap_code_gen`; take-over → wizard → `cheap_code_gen`; partial-apply failure recovery; idempotent re-run; v0.0.2 regression check (project with no `.maestro/` still works). (~1.5h)
+
+T2.4 and T2.5 are parallelizable with T2.1–T2.3.
 
 ## Acceptance criteria
 
