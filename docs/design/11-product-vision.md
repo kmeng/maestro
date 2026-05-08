@@ -63,6 +63,15 @@ Epic 4 (packaging into a single distributable) is deferred. v0.0.3 still
 ships as a `git clone + run` artifact for early adopters, with the Web UI
 launched manually.
 
+### Language
+
+v0.0.3 user-facing surfaces are in **Chinese (`zh-CN`)**. Machine
+identifiers and developer-facing artifacts (code, log event types, ADRs,
+design docs, commit messages) stay English. v0.0.3 ships hardcoded
+strings — no i18n framework. Decided in Epic 1 pass-2 D6; canonical
+breakdown in [Epic 1 — Language](13-epic1-team-composition.md#language).
+This applies to every epic.
+
 ## Technical design
 
 ### Process model
