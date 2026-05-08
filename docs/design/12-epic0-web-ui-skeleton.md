@@ -50,6 +50,10 @@ Code launches the MCP server as a stdio subprocess (today's behavior),
 `cheap_code_gen` is callable, nothing changes for an existing user who
 hasn't opted into the Web UI.
 
+The empty-shell page text is **Chinese (`zh-CN`)** per the vision-level
+language constraint. Canonical breakdown in
+[Epic 1 — Language](13-epic1-team-composition.md#language).
+
 ## Technical design
 
 ### Process model

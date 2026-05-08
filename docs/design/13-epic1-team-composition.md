@@ -94,6 +94,35 @@ view's job, not the wizard's. Two surfaces, two purposes:
   in browser memory.
 - The browser **back button** is treated as Cancel: discard, no write.
 
+### Language
+
+User-facing surfaces are in **Chinese (`zh-CN`)**. Machine identifiers
+and developer-facing artifacts stay English. v0.0.3 ships hardcoded
+strings — no i18n framework. Decided in pass-2 D6.
+
+| Category | Language |
+|---|---|
+| Web UI templates (HTML, buttons, headings, descriptions) | Chinese |
+| Wizard copy, step content, form labels | Chinese |
+| Validation error messages shown inline in the UI | Chinese |
+| MCP `cheap_code_gen` error returns (visible in Claude Code's response and in the problem panel) | Chinese |
+| `team.yaml` header comment block (the auto-written Web-UI header) | Chinese |
+| Dispatch log event identifiers (e.g., `dispatch.fallback.config_absent`) | English |
+| Code: variable / function / module names, code comments, internal log lines | English |
+| ADR / design doc / governance doc text | Existing convention (mixed) |
+| Commit messages, issue / PR titles | Existing convention |
+
+The illustrative D4 error message in this doc is shown in English purely
+as an interface reference; the actual rendered message at runtime is
+Chinese. Translation tables live alongside the strings they belong to —
+inline in Jinja templates and as Pydantic validator overrides for error
+messages.
+
+Retrofit to i18n is left for post-v0.0.3. The strings live in
+well-defined places (Jinja templates, Pydantic error messages, the MCP
+error helper, the `team.yaml` write template) so the future retrofit is
+a mechanical pass, not a hunting expedition.
+
 ### Role catalog (standing view)
 
 Outside the wizard, the role catalog is browseable as a permanent screen.
