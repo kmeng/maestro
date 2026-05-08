@@ -210,3 +210,10 @@ High-level milestones.
   on the MCP server side. Pass-2 scope decision.
 - **OPEN-3.7.** Concurrency: two MCP server processes writing the same
   log. Atomicity guarantees needed for the chosen format. Pass-2 spec.
+- **OPEN-3.8.** Two new dispatch-log event types contributed by Epic 1
+  pass-2 D4: `dispatch.fallback.config_absent` (informational, when
+  team.yaml is absent and MCP server falls back to v0.0.2 default
+  model) and `dispatch.refused.config_invalid` (when team.yaml fails
+  validation and dispatch is refused with a structured error). Both
+  must fit into Epic 3's log schema (OPEN-3.1 / OPEN-3.4). Surfaced in
+  the problem panel as user-visible items.

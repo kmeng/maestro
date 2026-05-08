@@ -216,12 +216,55 @@ read layer (read-failure → file-level fallback per D4).
   is the first place v0.0.3 actually affects the MCP runtime — handle with
   care to honor the no-regression rule.
 
-### Failure modes (file level)
+### Failure modes (file level) — MCP-server fallback semantics
 
-Per-field and cross-field failure modes are covered by the Validation
-rules subsection above. File-level failure modes — file missing, file
-present-but-invalid, file write fails — are settled by D4 (MCP-server
-fallback semantics). Stub here, filled in next decision.
+For any dispatch attempt, the project's `team.yaml` is in one of three
+states. The MCP server's behavior, decided in pass-2 D4, is:
+
+| State | MCP server behavior | Dispatch log event |
+|---|---|---|
+| Absent | Use v0.0.2 fallback (existing env-driven default model). Dispatch succeeds. | `dispatch.fallback.config_absent` (informational) |
+| Present + valid | Resolve `roles.<role>.model` from `team.yaml`. Dispatch with that model. | normal start/end events (Epic 3) |
+| Present + **invalid** | **Refuse the dispatch.** Return a structured error to Claude Code naming the failing field. **No silent fallback.** | `dispatch.refused.config_invalid` with validation detail |
+
+**Why "absent → fallback" but "invalid → refuse" are not symmetric.**
+A user with no `team.yaml` has not opted into v0.0.3 team configuration —
+possibly a v0.0.2 user who hasn't run the wizard yet. Falling back
+honors that intent: zero-regression. A user with an *invalid*
+`team.yaml` has tried to configure a team and gotten it wrong. Silently
+falling back would hide the bug ("why is my Junior using
+claude-sonnet-4-6? I configured deepseek-coder!") and violate D1's
+explicit-over-implicit principle. Refusing makes the failure visible
+immediately; the user fixes the file and retries.
+
+**Error message shape on refuse:**
+
+> `team.yaml at .maestro/team.yaml is invalid: roles.junior.model — must match pattern '^[a-z0-9][a-z0-9._-]*$'. Open the Web UI to fix, or edit the file directly.`
+
+The same error is written as a `dispatch.refused.config_invalid` event
+so Epic 3's problem panel surfaces it on next Web UI load.
+
+**Atomic writes for Web UI saves.** The Web UI writes `team.yaml` via
+`write-then-rename` (`os.replace`) so the MCP server can never observe
+a partially-written file. Without atomicity, a concurrent dispatch
+during a save could read torn YAML, fail validation, and produce a
+spurious "config invalid" refusal. With atomicity, the MCP server sees
+either the old file or the new file — never an in-between state.
+
+**Edge cases:**
+
+- *Partial config (user filled in 2 of 4 roles by hand-editing).* Fails
+  D2's strict-completeness rule → invalid → refused. The wizard guarantees
+  completeness on every save, so this is only reachable via manual edits.
+- *Role isn't dispatched in v0.0.2/v0.0.3 yet.* Only Junior is dispatched
+  today (`cheap_code_gen`). Other roles in `team.yaml` are ignored at
+  dispatch time and consumed when their corresponding workers exist
+  (post-v0.0.3). They still must be present and valid in the file —
+  D1's strict-completeness rule isn't relaxed.
+
+**Two new dispatch-log event types** (`dispatch.fallback.config_absent`
+and `dispatch.refused.config_invalid`) need to be incorporated into the
+log schema Epic 3's pass-2 lands. Flagged in Epic 3's open questions.
 
 ## Task breakdown
 
