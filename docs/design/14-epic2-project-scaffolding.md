@@ -259,6 +259,58 @@ Run before any plan can be applied:
 - **Line endings:** writes always LF. Reads tolerate CRLF by
   normalizing to LF for comparison.
 
+### Project registry — `~/.maestro/projects.json`
+
+The user-global recent-projects cache established in
+[ADR-0003](../adr/0003-shared-state-file-layout.md). v0.0.3 settles
+the schema and write semantics inline (cache concerns are reversible;
+no ADR).
+
+#### Schema
+
+```json
+{
+  "schema_version": 1,
+  "projects": [
+    {
+      "path": "/Users/alice/projects/myapp",
+      "last_opened_at": "2026-05-08T14:23:11Z"
+    }
+  ]
+}
+```
+
+`schema_version: 1` from day one for migration safety. No display
+name (the UI uses `basename(path)`), no team-summary cache (re-reads
+`team.yaml` cheaply on each open), no statistics.
+
+#### When to write
+
+| Event | Registry write? |
+|---|---|
+| Web UI opens (read existing) | No write |
+| User picks directory; plan preview renders | No write |
+| Apply succeeds | **Write**: upsert entry with `last_opened_at = now` |
+| Apply partially succeeds (some files written, some failed) | **Write**: upsert entry. The project has Maestro writes — counts as known. |
+| Pre-flight aborts before any write | No write |
+| User cancels mid-preview | No write |
+| User opens a known project from recent-projects | **Write**: bump `last_opened_at` |
+| User re-runs apply on a known project | **Write on success**: bump `last_opened_at` |
+
+The first concrete user commitment is clicking Apply. Browsing through
+the plan-preview without applying does not pollute the recent-projects
+list.
+
+#### Pruning and corruption tolerance
+
+- **Read-time pruning**: silently drop entries whose `path` no longer
+  exists on disk. Lazy write-back on the next event that writes
+  anyway — no thrashing.
+- **Unrecognized `schema_version`**: treat as absent, rebuild on next
+  write. No migration UX in v0.0.3.
+- **Parse failure (corrupt JSON)**: treat as absent, rebuild. Don't
+  surface to the user — this is a cache.
+
 ### Affected modules
 
 - New: `maestro/scaffold/` (or similar) — the template set, the new vs
@@ -326,7 +378,4 @@ High-level milestones.
 - **OPEN-2.5.** "Uninstall Maestro" / "remove Maestro from this project"
   flow. Not in v0.0.3 scope. Trigger: a user explicitly asks for it, or
   take-over has misapplied somewhere and the user needs a clean revert.
-- **OPEN-2.6.** Whether take-over should offer to register the project in
-  any global Maestro state (e.g., a list of Maestro projects under
-  `~/.maestro/projects.json`). Joint with Epic 0 OPEN-0.4 / Epic 1
-  OPEN-1.1.
+- ~~**OPEN-2.6.** Whether take-over should register the project in `~/.maestro/projects.json`.~~ **Resolved**: yes, on apply success (or partial-apply); never on plan-preview browse or pre-flight abort. Schema and write events specified in the "Project registry" subsection above.
