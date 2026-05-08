@@ -157,11 +157,7 @@ High-level milestones.
 
 ## Open questions
 
-- **OPEN-1.1.** Config storage location. Three candidates: `~/.maestro/`
-  (per-user, all projects share a team), project-local `.maestro/`
-  (per-project teams, per-project model bindings), or a hybrid (defaults
-  in `~/.maestro/`, overrides per project). Joint decision with Epic 0
-  OPEN-0.4. Pass-2 ADR.
+- ~~**OPEN-1.1.** Config storage location.~~ **Resolved by Epic 0 pass-2**: project-local `<project-root>/.maestro/team.yaml` (committed by default). User-global config home (`~/.maestro/`) is reserved for credentials, the recent-projects registry, and user preferences — not team composition. See [ADR-0003](../adr/0003-shared-state-file-layout.md).
 - **OPEN-1.2.** Config format — YAML vs JSON. YAML is friendlier to manual
   inspection; JSON has fewer parsing edge cases and matches existing
   Python ecosystem more cleanly. Pass-2 decision.

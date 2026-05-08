@@ -76,23 +76,43 @@ filesystem. This is load-bearing:
   user can configure Maestro before Claude Code is running, and observe
   Maestro after a Claude Code session ends.
 
-### Shared-state contract (skeleton)
+### Shared-state contract
 
-Epic 0 defines that there is a shared-state contract; pass 2 picks the
-exact shapes. The contract has two parts:
+The hybrid layout decided in [ADR-0003](../adr/0003-shared-state-file-layout.md):
 
-- **Config home** — where role/member/model bindings live. Read by both
-  processes. Written primarily by the Web UI (Epic 1). Candidate locations
-  to be evaluated in pass 2: `~/.maestro/`, project-local `.maestro/`, or a
-  hybrid. The choice has implications for project portability and is one of
-  Epic 1's open questions too.
-- **Dispatch log location** — where the MCP server writes invocation
-  events. Read by the Web UI (Epic 3). Candidate formats: JSONL file,
-  SQLite. Decision lives in Epic 3.
+```
+~/.maestro/                             # user-global
+├── credentials.env                     # API keys
+├── projects.json                       # known project paths (recent-projects UI)
+└── settings.yaml                       # user preferences
 
-Epic 0's pass-2 deliverable is a documented file layout and a tiny module
-both processes import to find these paths. Epic 0 does **not** define the
-log schema (that's Epic 3) or the config schema (that's Epic 1).
+<project-root>/.maestro/                # project-local; in user's git repo
+├── team.yaml                           # role→model bindings (Epic 1 schema)
+├── logs/
+│   └── dispatch.<format>               # dispatch log (Epic 3 format)
+└── .gitignore                          # ships with: logs/
+```
+
+**Per-user state** lives in `~/.maestro/`: credentials, recent-projects
+registry, user preferences. Never written into user projects.
+
+**Per-project state** lives in `<project-root>/.maestro/`: `team.yaml`
+is committed by default (team composition is a project decision); `logs/`
+is gitignored via a scaffolding-supplied `.maestro/.gitignore`.
+
+Both processes consume paths through a single `maestro/paths.py` module.
+Code never hard-codes paths.
+
+Epic 0 owns the path module and the directory creation. Epic 0 does **not**
+define the schemas (`team.yaml` is Epic 1; dispatch log format is Epic 3).
+
+### `.env` loader migration
+
+v0.0.2's project-local `.env` loader (issue #6) is extended in v0.0.3 to
+also check `~/.maestro/credentials.env`. Precedence (highest first):
+process env → project `.env` → `~/.maestro/credentials.env`. v0.0.2
+behavior is preserved at higher precedence — no regression for existing
+users. Epic 0 ships the loader extension as a small task.
 
 ### HTTP server
 
@@ -179,9 +199,7 @@ tasks.
 - ~~**OPEN-0.1.** Web framework choice (FastAPI vs Flask vs other). Pass-2 ADR.~~ **Resolved**: FastAPI + uvicorn — see [ADR-0001](../adr/0001-web-framework-fastapi.md).
 - ~~**OPEN-0.2.** Frontend approach (no-build progressive HTML vs proper SPA framework).~~ **Resolved**: no-build HTML + htmx (+ optional Alpine.js), vendored — see [ADR-0002](../adr/0002-frontend-no-build-htmx.md).
 - **OPEN-0.3.** Port-conflict strategy. Pass-2 decision.
-- **OPEN-0.4.** Where does config live — `~/.maestro/`, project-local
-  `.maestro/`, or hybrid? Couples to Epic 1. Pass-2 decision, made jointly
-  with Epic 1.
+- ~~**OPEN-0.4.** Where does config live — `~/.maestro/`, project-local `.maestro/`, or hybrid?~~ **Resolved**: hybrid (project-primary, user-secondary) — see [ADR-0003](../adr/0003-shared-state-file-layout.md).
 - **OPEN-0.5.** Single-process-mode for development convenience? It would
   be tempting to allow `python server.py` to also start the HTTP server in
   a thread, for ease of testing during development. Trade-off: convenience
