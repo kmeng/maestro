@@ -80,23 +80,48 @@ property, not a member property.
 
 ## Technical design
 
-### Data model — coarse
+### Data model — schema (version 1)
 
-Two layers of config:
+`team.yaml` is YAML. Schema decided in pass 2; full rationale in
+[ADR-0004](../adr/0004-team-config-format-and-schema.md).
 
-- **Role layer.** Four entries, one per instantiable role. Each entry:
-  role identifier (`pm`, `senior`, `junior`, `documentarian`), bound model
-  identifier (e.g., `claude-sonnet-4-6`, `deepseek-coder`), optional
-  user-supplied display name override for the role.
-- **Member layer.** One entry per role in v0.0.3 (the 1:1 constraint).
-  Each entry: member identifier, role reference, user-chosen alias.
+```yaml
+# Maestro team configuration. Edit via the Web UI.
+# Run `maestro-webui`, then open http://localhost:19830/team
+# Schema reference: docs/design/13-epic1-team-composition.md
+schema_version: 1
 
-The Architect identity is not in the config — it's implicit (the running
-Claude Code session). The role catalog UI shows it for completeness but
-the config layer ignores it.
+roles:
+  pm:
+    member: Alex
+    model: claude-sonnet-4-6
+  senior:
+    member: Sam
+    model: claude-sonnet-4-6
+  junior:
+    member: Jamie
+    model: deepseek-coder
+  documentarian:
+    member: Drew
+    model: qwen-plus
+```
 
-The actual schema (YAML vs JSON, field names, validation rules) is pass-2
-work.
+Properties baked into the schema:
+
+- **Role-keyed map** enforces 1 role : 1 member at the schema level —
+  two PMs are not expressible.
+- **All four roles required**, each with `member` and `model` fields,
+  both required. No partial configs.
+- **Defaults in code, not in file.** `architecture.md` defaults live in
+  a `DEFAULT_MODELS` constant; the wizard pre-fills them; the file
+  always carries explicit values.
+- **Architect not included** — the user's Claude Code main session is
+  not a configurable team member.
+- **`schema_version: 1`** from day one for migration safety.
+
+The schema is realized in code as Pydantic models (`TeamConfig`,
+`RoleEntry`, `RoleId`). One contract serves Web UI I/O, YAML
+round-trip, and MCP server read paths.
 
 ### Affected modules
 
@@ -158,13 +183,8 @@ High-level milestones.
 ## Open questions
 
 - ~~**OPEN-1.1.** Config storage location.~~ **Resolved by Epic 0 pass-2**: project-local `<project-root>/.maestro/team.yaml` (committed by default). User-global config home (`~/.maestro/`) is reserved for credentials, the recent-projects registry, and user preferences — not team composition. See [ADR-0003](../adr/0003-shared-state-file-layout.md).
-- **OPEN-1.2.** Config format — YAML vs JSON. YAML is friendlier to manual
-  inspection; JSON has fewer parsing edge cases and matches existing
-  Python ecosystem more cleanly. Pass-2 decision.
-- **OPEN-1.3.** Schema-level shape of role-level model override. Specifically,
-  what's the override mechanism's UX and config representation when the
-  user wants role X to use a model different from `architecture.md`'s
-  default? Pass-2 design.
+- ~~**OPEN-1.2.** Config format — YAML vs JSON.~~ **Resolved**: YAML, via `pyyaml` — see [ADR-0004](../adr/0004-team-config-format-and-schema.md).
+- ~~**OPEN-1.3.** Schema-level shape of role-level model override.~~ **Resolved**: no separate "override" mechanism. The user simply sets `model:` to whatever they want. Defaults pre-filled by wizard, never implicit. See [ADR-0004](../adr/0004-team-config-format-and-schema.md).
 - **OPEN-1.4.** First-launch wizard re-entry. Should re-running the wizard
   from the menu walk through all steps again, or jump to the first
   unfilled / unconfirmed step? Pass-2 UX call.
