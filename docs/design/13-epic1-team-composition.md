@@ -268,16 +268,17 @@ log schema Epic 3's pass-2 lands. Flagged in Epic 3's open questions.
 
 ## Task breakdown
 
-High-level milestones.
+PR-sized closed loops. Each PR keeps `main` runnable. Order is the
+dependency order. **Prerequisite**: all of Epic 0 T0.1–T0.4 must be
+landed before T1.1 starts.
 
-- [ ] T1.1 — Pass-2 design: config storage location (~/.maestro/ vs project-local vs hybrid) — joint with Epic 0 OPEN-0.4
-- [ ] T1.2 — Pass-2 design: config schema (YAML vs JSON, field names, validation rules)
-- [ ] T1.3 — Implement: team domain model + read/write of config
-- [ ] T1.4 — Implement: HTTP API endpoints for team config
-- [ ] T1.5 — Implement: Web UI first-launch wizard
-- [ ] T1.6 — Implement: Web UI role catalog standing view
-- [ ] T1.7 — Implement: MCP server reads role→model binding from config, with v0.0.2 fallback when config absent
-- [ ] T1.8 — Verify: end-to-end. New install → wizard → cheap_code_gen invocation uses the configured model.
+- [ ] **T1.1** — Add Pydantic models (`TeamConfig`, `RoleEntry`, `RoleId`) per [ADR-0004](../adr/0004-team-config-format-and-schema.md), plus a `DEFAULT_MODELS` constant sourced from [`architecture.md`](../architecture.md). Pure data model. Unit tests on the validators (D2 rules: regex, length caps, role-set equality, alias uniqueness). (~1.5h)
+- [ ] **T1.2** — YAML read/write helpers in `maestro/team/`. Read returns `TeamConfig | None | ValidationError`; write uses `os.replace` for atomic write-then-rename. Wired up by a no-op load from the MCP server's startup path so the module isn't orphaned. Unit tests on round-trip + atomicity. (~1.5h)
+- [ ] **T1.3** — HTTP API endpoints: `GET /api/team` (404 if absent, 200 on valid, 422 with field-map on invalid) and `POST /api/team` (201 on success, 422 on validation error). Unit tests per response code; smoke: curl flow. (~1h)
+- [ ] **T1.4** — Wizard UI: four steps (Welcome / Role tour / Confirm / Done). Inline validation. Cancel/Back semantics. Pre-fills from `architecture.md` defaults on first launch; from existing `team.yaml` on re-entry. Smoke: walk through wizard end-to-end on clean state and on re-entry. (~2h)
+- [ ] **T1.5** — Standing role-catalog view: read-only summary of saved team plus per-row edit. The non-wizard surface for changing one row. Smoke: edit one row, confirm `team.yaml` updated. (~1.5h)
+- [ ] **T1.6** — Wire MCP server's `cheap_code_gen` to resolve Junior's `model` from `team.yaml` per D4: absent → v0.0.2 fallback; valid → use config; invalid → refuse with structured error. Emit `dispatch.fallback.config_absent` and `dispatch.refused.config_invalid` events. Unit tests on all three branches; smoke: clean install with `.env` only still works exactly as v0.0.2. (~1.5h)
+- [ ] **T1.7** — End-to-end verification PR. Documented manual smoke: wizard → use configured model → break `team.yaml` → refuse cleanly → fix → works. Plus regression: `.env`-only project still works as v0.0.2. (~1h)
 
 ## Acceptance criteria
 
