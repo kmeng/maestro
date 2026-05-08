@@ -7,6 +7,24 @@ For architectural principles, see [`docs/architecture.md`](docs/architecture.md)
 
 ---
 
+## Session-start protocol
+
+Before responding to the user's first substantive request in a fresh session, you MUST:
+
+1. Read the most recent file in `docs/journal/` to learn what the previous session left undone.
+2. Run `gh issue list --state open` to see active work.
+3. Run `git status` and `git branch --show-current` to verify the working tree is in a clean, expected state.
+4. Synthesize: state where the project sits, what is open, and what you understand the user is now asking. Then ask the user to confirm or correct.
+5. Wait for user confirmation before taking any action that creates commits, opens issues / PRs, or pushes to remote.
+
+Compression is allowed when the user's request is read-only or trivial (e.g., "what does X do?"); collapse the synthesis to one sentence.
+
+If `docs/journal/` is empty or missing, skip step 1 and note its absence in the synthesis.
+
+At meaningful session checkpoints — a PR merged, an issue resolved, a major decision made, or when the user signals "wrap up" / "done for today" — offer to append to today's journal entry. Do not infer session end; wait for the user's signal.
+
+---
+
 ## Project context
 
 Maestro is an open-source MCP server that orchestrates a heterogeneous AI software team. The orchestrator (Claude Code main session, running on user's subscription) dispatches execution-heavy tasks to cheaper models (DeepSeek, Qwen) via MCP tools. The goal is delivering near-flagship code quality at 10–20% of the cost.
