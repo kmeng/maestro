@@ -123,6 +123,52 @@ The schema is realized in code as Pydantic models (`TeamConfig`,
 `RoleEntry`, `RoleId`). One contract serves Web UI I/O, YAML
 round-trip, and MCP server read paths.
 
+### Validation rules
+
+The schema's Pydantic models enforce the rules below. Same models are
+used at the Web UI form layer (inline error rendering), the API save
+layer (422 responses with `field → message` maps), and the MCP server
+read layer (read-failure → file-level fallback per D4).
+
+**Per-field:**
+
+| Field | Type | Rules |
+|---|---|---|
+| `schema_version` | int | Must be `1` for v0.0.3. Read-time rejection if absent or different; save-time rejection if the API caller claims another version. |
+| `roles` | map | Keys must be exactly `{pm, senior, junior, documentarian}` — set equality, no extras, no missing. |
+| `roles.<id>.member` | str | Required. Non-empty after whitespace strip. Max 64 chars. No newlines, tabs, or control characters. Unicode allowed. |
+| `roles.<id>.model` | str | Required. Non-empty after strip. Matches `^[a-z0-9][a-z0-9._-]*$`. Max 128 chars. |
+
+**Cross-field:**
+
+- **Member alias uniqueness** — two roles cannot share a `member` value
+  (case-insensitive, whitespace-trimmed comparison). Save rejected with
+  a clear message ("Alex is already used as the PM's alias").
+- **Role-set equality** — the `roles` map's key set must equal the four
+  canonical IDs exactly.
+
+**What's deliberately not validated at save time:**
+
+- **Whether `model` corresponds to a real, callable model.** Maestro
+  doesn't own the canonical list of valid model IDs; providers ship and
+  retire models. The wizard offers a curated dropdown plus a custom
+  escape hatch (UX detail in D3). At dispatch time, an unknown model ID
+  surfaces in Epic 3's problem panel — that's the right discovery
+  point, not config-save.
+- **Whether credentials exist for the model's provider.** Same reasoning;
+  runtime concern, not config-validity concern.
+
+**Error reporting:**
+
+- Web UI form: inline per-field error messages; submit button disabled
+  while any field is invalid.
+- API save (`POST /api/team`): Pydantic `ValidationError` → 422 with a
+  structured `field → message` map; Web UI renders these inline.
+- Read time: a `team.yaml` that fails validation triggers the file-level
+  fallback (D4) — the file is **never** silently patched or partially
+  accepted. Either the whole file passes or the system treats it as
+  absent and surfaces the problem.
+
 ### Affected modules
 
 - New: `maestro/team/` (or similar) — domain model for roles and members,
@@ -136,20 +182,12 @@ round-trip, and MCP server read paths.
   is the first place v0.0.3 actually affects the MCP runtime — handle with
   care to honor the no-regression rule.
 
-### Failure modes
+### Failure modes (file level)
 
-- **Config file missing.** Web UI shows the first-launch wizard. MCP
-  server, if invoked before config exists, falls back to its v0.0.2
-  default behavior (current env-driven model selection) and logs a
-  warning the Web UI can later surface in the problem panel (Epic 3).
-  This is the no-regression escape hatch.
-- **Config file corrupted / unreadable.** Web UI shows a "fix or reset"
-  screen rather than auto-overwriting. MCP server falls back as above.
-- **Model identifier in config doesn't match a known model.** Validate at
-  save time in the Web UI; MCP server validates at read time and falls
-  back as above with a clear log line.
-- **Two members with the same alias.** v0.0.3 has one member per role,
-  so duplicate aliases come from user typo. Validate at save time.
+Per-field and cross-field failure modes are covered by the Validation
+rules subsection above. File-level failure modes — file missing, file
+present-but-invalid, file write fails — are settled by D4 (MCP-server
+fallback semantics). Stub here, filled in next decision.
 
 ## Task breakdown
 
