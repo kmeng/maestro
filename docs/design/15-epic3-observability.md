@@ -161,6 +161,89 @@ tail-reader. Track last-read offset and inode; on poll, if `os.stat`
 shows new bytes, parse from the offset; on inode change, reopen and
 reset.
 
+### Retention, truncation, cost
+
+Pass-2 D3 settles three reversible knobs that ride on top of the
+format contract from D1.
+
+#### Truncation
+
+Per-field caps that keep the serialized line under D1's 4 KB ceiling:
+
+| Field | Lives in | Cap |
+|---|---|---|
+| `input_summary` | `dispatch.start` | 1 KB |
+| `output_summary` | `dispatch.end` | 1 KB |
+| `error_message` | `dispatch.failed` | 512 B |
+| `validation_error_message` | `dispatch.refused.config_invalid` | 512 B |
+
+Worst-case event size with all caps hit: ~1.8 KB. Comfortable headroom
+under the 4 KB ceiling.
+
+**Algorithm**: head + tail with ellipsis marker. For an over-cap
+string of length `N` and cap `C`:
+- `N ≤ C` → keep as-is.
+- `N > C` → `(C-32)/2` leading bytes + `…<truncated N→C bytes>…` +
+  `(C-32)/2` trailing bytes.
+
+Head + tail (rather than head-only) preserves both the meaningful
+opening and the meaningful closing of LLM responses and error
+messages.
+
+UTF-8 boundary-safe: truncation respects character boundaries via
+`bytes.decode("utf-8", errors="ignore")` after byte slicing.
+
+The full payload still flows to Claude Code at dispatch time —
+truncation is a *logging* concern, not a *dispatch* concern.
+
+#### Rotation: by size, 5 MB
+
+When `os.stat(dispatch.jsonl).st_size > 5 * 1024 * 1024`, the
+dispatcher rotates before its next write:
+
+1. Rename `dispatch.jsonl` → `dispatch.<timestamp>.jsonl` (timestamp
+   ISO-8601 compact, e.g. `dispatch.20260508T142311Z.jsonl`).
+2. Open a fresh empty `dispatch.jsonl`.
+
+Check runs inside `emit_event` before each write. With the 4 KB
+per-event cap, 5 MB ≈ ~1300 events worst case (typically far more —
+events average well below the cap).
+
+**No auto-deletion in v0.0.3.** Rotated files accumulate. Users may
+want them; deleting without consent is risky. Disk pressure → users
+delete manually. If demand surfaces post-v0.0.3, an auto-prune
+setting can ship.
+
+**Web UI v0.0.3 reads only the current `dispatch.jsonl`.** Older
+rotated files exist on disk but aren't loaded into the history view.
+Pass-3 nice-to-have: scroll-back loads older files on demand.
+
+**Reader response to rotation**: when the Web UI's tail-reader sees
+the inode of `dispatch.jsonl` change, it reopens and resets offset.
+Already specified in D1.
+
+#### Cost / token display
+
+`dispatch.end` carries an optional `cost` object:
+
+```json
+{
+  "cost": {
+    "prompt_tokens": 230,
+    "completion_tokens": 1420
+  }
+}
+```
+
+v0.0.3 records token counts when the provider returns them
+(DeepSeek, Anthropic, etc.). **No USD computation in v0.0.3** —
+USD requires per-model pricing tables, currency-rate concerns, and
+list-price-vs-actual ambiguity. Defer.
+
+When the executor doesn't return token info (some providers, some
+error paths), `cost` is omitted entirely from `dispatch.end`. The
+Web UI shows "—" for those rows; no error or warning.
+
 ### MCP server instrumentation — shared dispatcher
 
 Pass-2 D2 settles the instrumentation pattern.
@@ -309,14 +392,10 @@ High-level milestones.
 ## Open questions
 
 - ~~**OPEN-3.1.** Log storage: JSONL vs SQLite.~~ **Resolved**: JSONL at `<project-root>/.maestro/logs/dispatch.jsonl`, append-only, line-level atomic via `O_APPEND`. See [ADR-0007](../adr/0007-dispatch-log-format-and-schema.md).
-- **OPEN-3.2.** Retention policy default. Rotate-by-age, rotate-by-count,
-  rotate-by-size, or no rotation? Pass-2 decision.
+- ~~**OPEN-3.2.** Retention policy default.~~ **Resolved**: rotate by size at 5 MB. Rotated files accumulate (no auto-deletion in v0.0.3). Web UI reads current file only; older-file scroll-back is post-v0.0.3.
 - ~~**OPEN-3.3.** Instrumentation invasiveness.~~ **Resolved**: shared dispatcher (`dispatcher.run()`). MCP tools become thin wrappers; the dispatcher owns request-id generation, model resolution per Epic 1 D4, event emission, and failure handling. Logging failure does not fail dispatch — `emit_event` falls back to stderr. Detail in the "MCP server instrumentation" subsection.
 - ~~**OPEN-3.4.** Whether v0.0.3 introduces a "blocked / need human input" event type.~~ **Resolved**: deferred to v0.0.4+. v0.0.3's worker is the unchanged v0.0.2 `cheap_code_gen`; shipping the event type would require worker behavior change. Re-trigger: any richer worker that supports human-in-the-loop signaling. See [ADR-0007](../adr/0007-dispatch-log-format-and-schema.md).
-- **OPEN-3.5.** Truncation rules for large input/output payloads in the
-  history view. Pass-2 UX call.
-- **OPEN-3.6.** Cost / token-count display. v0.0.2 doesn't track cost. If
-  Epic 3 introduces it, even minimally, that's a small new responsibility
-  on the MCP server side. Pass-2 scope decision.
+- ~~**OPEN-3.5.** Truncation rules.~~ **Resolved**: per-field byte caps (1 KB / 1 KB / 512 B / 512 B), head + tail with ellipsis marker, UTF-8-boundary-safe. The full payload still flows to Claude Code at dispatch time; only the log entry is truncated.
+- ~~**OPEN-3.6.** Cost / token-count display.~~ **Resolved**: optional `cost` object on `dispatch.end` carries `prompt_tokens` and `completion_tokens` when the provider returns them. No USD computation in v0.0.3. Missing cost shows as "—" in the UI.
 - ~~**OPEN-3.7.** Concurrency.~~ **Resolved**: POSIX `O_APPEND` + single `write()` ≤ `PIPE_BUF` is atomic across processes; 4 KB per-event cap (D3 truncation enforces) makes the guarantee hold. Windows is best-effort, documented. See [ADR-0007](../adr/0007-dispatch-log-format-and-schema.md).
 - ~~**OPEN-3.8.** Two new dispatch-log event types from Epic 1 D4.~~ **Resolved**: `dispatch.fallback.config_absent` and `dispatch.refused.config_invalid` are both first-class in the schema. See [ADR-0007](../adr/0007-dispatch-log-format-and-schema.md).
