@@ -52,36 +52,103 @@ offers the appropriate flow.
 ### New project flow
 
 1. User picks a directory (empty / non-existent).
-2. Maestro initializes a git repository.
-3. Maestro lays down a full Maestro-flavored layout: collaboration
-   essentials plus internal-project conventions. This includes everything
-   a fresh Maestro-style project starts with — CLAUDE.md, docs/design/
-   skeleton, docs/journal/ directory, ADR scheme, BUILD_LOG.md, the
-   conventions Maestro itself uses.
-4. Initial commit is made attributing both the user and Maestro.
+2. Maestro runs pre-flight (D2): verifies the directory is empty.
+3. Maestro initializes a git repository.
+4. Maestro lays down the new-project file set from D1 (`.gitignore`,
+   `README.md`, `CLAUDE.md`, `.maestro/.gitignore`).
+5. Initial commit is made.
+6. The wizard (Epic 1) launches automatically and writes
+   `.maestro/team.yaml`.
+
+The plan-preview UX (described under "Take-over flow" below) also
+applies here — the user sees what will be written before any write
+happens.
 
 ### Take-over flow
 
 1. User picks a directory containing an existing git repo.
-2. Maestro analyzes the directory and presents a plan: "I will add files
-   X, Y, Z. I will append a Maestro section to existing files A, B
-   (showing the diff). I will not touch anything else."
-3. User confirms or adjusts. Maestro applies changes.
-4. Re-running the take-over flow shows "nothing to do" — the operation is
-   idempotent.
+2. Maestro runs pre-flight (D2): verifies `.git/` exists, working tree
+   is clean, no unexpected `.maestro/` content. Pre-flight failures
+   surface in the plan-preview banner; apply is disabled until they
+   are resolved.
+3. Maestro generates a plan — for each file in the take-over set
+   (`.maestro/.gitignore`, `CLAUDE.md`), a `(file, op, detail)` row.
+4. The plan-preview UX shows the user what will happen, with full
+   drill-down on every row.
+5. User confirms apply. Maestro writes file by file with streaming
+   per-file results.
+6. The wizard (Epic 1) launches automatically and writes
+   `.maestro/team.yaml`.
+7. Re-running take-over on the same project shows everything as
+   `NOOP` — idempotence holds.
 
-The take-over flow is governed by three guarantees:
+#### Plan-preview UX (decided in pass-2 D3)
 
-- **Additive.** Never overwrites existing user content. If a file already
-  exists, Maestro either skips it or proposes a scoped append (e.g.,
-  marked Maestro section in CLAUDE.md), never a rewrite.
-- **Scoped.** Only files that are required for Maestro AI team
-  collaboration are touched. Maestro's internal-project hygiene
-  (BUILD_LOG.md, journal scheme, ADR scheme) stays out of take-over. The
-  exact scope is pass-2 work.
-- **Idempotent.** Re-running take-over produces no changes. This requires
-  the appended sections in user files to be detectable (e.g., delimited)
-  and the added files to be checked for content match before any write.
+A three-layer disclosure surface:
+
+- **Pre-flight banner** at the top — current project path, plus a
+  summary of the pre-flight checks (✓ git repo, ✓ clean tree, ✓ no
+  existing `.maestro/`). Failed checks render prominently and disable
+  the Apply button.
+- **Plan overview** — one row per planned file, grouped by op type.
+  Each row shows op badge (color-coded), file path, one-line summary,
+  a disclosure toggle for details, and an opt-out checkbox for
+  `CREATE` / `APPEND_DELIMITED` ops only.
+- **Per-row drill-down** — clicking a row expands to show the actual
+  content that will be written, the existing content (if any), and a
+  unified diff for `APPEND_DELIMITED`. For `CONFLICT` rows, the
+  specific reason and two action buttons (Skip / Open file).
+
+#### Conflict handling
+
+There is **no "force overwrite" button.** The user resolves conflicts
+by editing the file themselves (Open file → fix → close) and
+re-running the plan. The plan re-evaluates idempotence on the next
+generation; what was `CONFLICT` may now be `NOOP`. Intentional
+friction — makes "Maestro overwrote my CLAUDE.md" impossible by
+construction.
+
+Required-file conflicts (CLAUDE.md, `.maestro/.gitignore` in
+take-over) block apply. Optional-file conflicts (none in v0.0.3) do
+not.
+
+#### Apply behavior
+
+- Apply button **disabled** if any pre-flight check fails, or any
+  required-file `CONFLICT` is unresolved, or all opt-out checkboxes
+  are unchecked.
+- Apply button **enabled with a confirm modal** otherwise.
+- On confirm, the engine applies file by file. Per-file results
+  stream via SSE (`sse-starlette` from [ADR-0001](../adr/0001-web-framework-fastapi.md)):
+
+  ```
+  event: file_started   data: { path: "CLAUDE.md" }
+  event: file_succeeded data: { path: "CLAUDE.md" }
+  event: file_failed    data: { path: ".maestro/.gitignore", error: "..." }
+  event: plan_complete  data: { succeeded: N, failed: M }
+  ```
+
+  The Web UI updates each row's state in real time.
+
+#### Three guarantees, made concrete
+
+- **Additive** is enforced by the operation taxonomy in
+  [ADR-0006](../adr/0006-take-over-merge-mechanics.md): no `OVERWRITE`
+  op exists; user content is never replaced silently.
+- **Scoped** is enforced by D1's deliberately small file lists.
+- **Idempotent** is enforced by per-file rules in ADR-0006: byte
+  match for replacement files, delimiter scan for mergeable files.
+
+### Language
+
+Web UI surfaces in this epic are **Chinese**: page headings, op
+badges, summary lines ("将创建 .maestro/.gitignore"), button labels,
+modal text, error messages. File paths and the *content* of files
+shown in drill-down stay verbatim — Maestro doesn't translate user
+content or template content. CLAUDE.md Maestro section content is
+English regardless (Claude Code is the reader; see ADR-0005).
+
+Per the cross-cutting [Epic 1 Language section](13-epic1-team-composition.md#language).
 
 ## Technical design
 
