@@ -81,39 +81,85 @@ Items in the problem panel can be dismissed (acknowledged) or kept open.
 
 ## Technical design
 
-### Where the dispatch log lives
+### Log format and schema — decided
 
-A file (or files) on the filesystem at a path defined by Epic 0's shared
-paths module. The Web UI tails it for the live view; reads it for the
-history view.
+Pass-2 D1 settles format, schema, and concurrency. Full rationale in
+[ADR-0007](../adr/0007-dispatch-log-format-and-schema.md).
 
-Storage format candidates, decided in pass 2:
+#### Format
 
-- **JSONL.** One line per invocation. Append-only, human-readable, simple
-  to tail. Reading old entries means scanning the file.
-- **SQLite.** Indexed reads, easy filtering, slightly more complex to
-  write atomically and tail.
+**JSONL** at `<project-root>/.maestro/logs/dispatch.jsonl`. One JSON
+object per line, terminated by `\n`. Append-only; rotation via file
+replacement (D3).
 
-Trade-off: JSONL is friendlier to the "tail with file watcher" live-view
-implementation; SQLite is friendlier to the history view's filtering and
-search. Pass-2 ADR.
+Path comes from [ADR-0003](../adr/0003-shared-state-file-layout.md)'s
+`paths.dispatch_log_path(project_root)`.
 
-### What gets logged — the contract
+#### Common fields on every event
 
-Every dispatch from MCP server side emits an event when:
+```json
+{
+  "event_type": "dispatch.start",
+  "event_version": 1,
+  "request_id": "01HXNZ7K0K3M7VHV6E5G6X4XYA",
+  "timestamp": "2026-05-08T14:23:11.123Z"
+}
+```
 
-- Invocation **starts** (request_id, role, model, input summary, started_at).
-- Invocation **ends** (request_id, success/failure, output summary,
-  finished_at, optional cost / token counts, optional error).
-- Invocation reports **blocked / need human input** (request_id, blocking
-  reason, what's needed).
+`event_version` is per event type — adding fields to one type doesn't
+force a global schema bump.
 
-The "need human input" event type is new in v0.0.3 — workers don't emit it
-today. Whether `cheap_code_gen` itself learns to emit it depends on
-whether v0.0.3 changes the worker's behavior. Decision deferred to pass 2.
-Worst case: v0.0.3 ships without the blocked event type and the problem
-panel only shows failures and config warnings — the panel still earns its
-keep.
+#### Five event types in v0.0.3
+
+| Type | Role in flow | Type-specific fields |
+|---|---|---|
+| `dispatch.fallback.config_absent` | Pre-start informational (Epic 1 D4) | `role`, `fallback_model` |
+| `dispatch.refused.config_invalid` | Terminal alone — no `start`/`end` follow (Epic 1 D4) | `validation_error_field`, `validation_error_message` |
+| `dispatch.start` | Worker invocation begins | `role`, `model`, `member`, `input_summary` |
+| `dispatch.end` | Worker invocation succeeds | `output_summary`, `duration_ms`, optional `cost` |
+| `dispatch.failed` | Worker invocation fails | `duration_ms`, `error_kind`, `error_message` |
+
+`dispatch.blocked` is **deferred** (OPEN-3.4) — re-open when richer
+workers arrive in v0.0.4+.
+
+#### In-code contract
+
+Pydantic discriminated union on `event_type`. Models live in
+`maestro/dispatch_log/events.py`. MCP server emits via
+`event.model_dump_json()`; Web UI parses via the same models. Same
+discipline as `team.yaml` ([ADR-0004](../adr/0004-team-config-format-and-schema.md)).
+
+#### Per-event size cap
+
+**4 KB** per serialized line (including the trailing `\n`). What makes
+the concurrency guarantee below hold. D3 settles truncation rules to
+enforce.
+
+#### Concurrency
+
+Two MCP server processes (e.g., user with two Claude Code sessions on
+the same project) may both append concurrently. POSIX `O_APPEND` plus
+single `write()` calls under `PIPE_BUF` (≥ 512, typically 4096) is
+atomic — the kernel never interleaves partial writes.
+
+```python
+fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+os.write(fd, line.encode("utf-8") + b"\n")
+```
+
+One `os.write()` per event. Combined with the 4 KB size cap, two
+concurrent writers cannot tear each other.
+
+Windows note: `O_APPEND` atomicity guarantees on Windows differ from
+POSIX. v0.0.3 ships Linux/macOS-correct; Windows users either run WSL
+or accept best-effort atomicity (single-user reality is fine; the
+worst case is one corrupt log line, which the reader detects via parse
+failure → log warning → skip).
+
+Reader side (Web UI): single-process, multiple browser tabs share one
+tail-reader. Track last-read offset and inode; on poll, if `os.stat`
+shows new bytes, parse from the offset; on inode change, reopen and
+reset.
 
 ### MCP server instrumentation
 
@@ -192,28 +238,17 @@ High-level milestones.
 
 ## Open questions
 
-- **OPEN-3.1.** Log storage: JSONL vs SQLite. Pass-2 ADR. Couples to
-  the live-tail implementation difficulty.
+- ~~**OPEN-3.1.** Log storage: JSONL vs SQLite.~~ **Resolved**: JSONL at `<project-root>/.maestro/logs/dispatch.jsonl`, append-only, line-level atomic via `O_APPEND`. See [ADR-0007](../adr/0007-dispatch-log-format-and-schema.md).
 - **OPEN-3.2.** Retention policy default. Rotate-by-age, rotate-by-count,
   rotate-by-size, or no rotation? Pass-2 decision.
 - **OPEN-3.3.** Instrumentation invasiveness — decorator wrapping vs
   explicit log calls vs shared dispatcher. Pass-2 decision; affects how
   much MCP server code changes.
-- **OPEN-3.4.** Whether v0.0.3 introduces a "blocked / need human input"
-  event type and whether `cheap_code_gen` learns to emit it. If yes,
-  worker code changes; if no, problem panel ships without that capability
-  in v0.0.3.
+- ~~**OPEN-3.4.** Whether v0.0.3 introduces a "blocked / need human input" event type.~~ **Resolved**: deferred to v0.0.4+. v0.0.3's worker is the unchanged v0.0.2 `cheap_code_gen`; shipping the event type would require worker behavior change. Re-trigger: any richer worker that supports human-in-the-loop signaling. See [ADR-0007](../adr/0007-dispatch-log-format-and-schema.md).
 - **OPEN-3.5.** Truncation rules for large input/output payloads in the
   history view. Pass-2 UX call.
 - **OPEN-3.6.** Cost / token-count display. v0.0.2 doesn't track cost. If
   Epic 3 introduces it, even minimally, that's a small new responsibility
   on the MCP server side. Pass-2 scope decision.
-- **OPEN-3.7.** Concurrency: two MCP server processes writing the same
-  log. Atomicity guarantees needed for the chosen format. Pass-2 spec.
-- **OPEN-3.8.** Two new dispatch-log event types contributed by Epic 1
-  pass-2 D4: `dispatch.fallback.config_absent` (informational, when
-  team.yaml is absent and MCP server falls back to v0.0.2 default
-  model) and `dispatch.refused.config_invalid` (when team.yaml fails
-  validation and dispatch is refused with a structured error). Both
-  must fit into Epic 3's log schema (OPEN-3.1 / OPEN-3.4). Surfaced in
-  the problem panel as user-visible items.
+- ~~**OPEN-3.7.** Concurrency.~~ **Resolved**: POSIX `O_APPEND` + single `write()` ≤ `PIPE_BUF` is atomic across processes; 4 KB per-event cap (D3 truncation enforces) makes the guarantee hold. Windows is best-effort, documented. See [ADR-0007](../adr/0007-dispatch-log-format-and-schema.md).
+- ~~**OPEN-3.8.** Two new dispatch-log event types from Epic 1 D4.~~ **Resolved**: `dispatch.fallback.config_absent` and `dispatch.refused.config_invalid` are both first-class in the schema. See [ADR-0007](../adr/0007-dispatch-log-format-and-schema.md).
