@@ -25,6 +25,21 @@ At meaningful session checkpoints — a PR merged, an issue resolved, a major de
 
 ---
 
+## Implementation-start protocol
+
+Before writing any code for an implementation task, you MUST:
+
+1. Run `gh issue view <task-issue-number>` and read the full task briefing.
+2. Open every link in the task body's "Design references" section — design doc sections (`§design`) and ADRs (`§ADR`) are mandatory reading; the parent epic is mandatory reading.
+3. State the implementation plan back to the user, mapping each acceptance criterion in the briefing to "covered by approach X" with one short sentence per criterion.
+4. Wait for the user's explicit `go` (or equivalent) before writing code.
+
+This protocol applies whenever a request can be traced to an existing task issue. If the user asks for code without referencing an issue, ask which task it corresponds to before proceeding.
+
+The point of mandatory pre-reading: AI implementers start cold every session. Rich, mandatory-reading briefings are the difference between on-target implementation and "close enough but missing constraint X."
+
+---
+
 ## Project context
 
 Maestro is an open-source MCP server that orchestrates a heterogeneous AI software team. The orchestrator (Claude Code main session, running on user's subscription) dispatches execution-heavy tasks to cheaper models (DeepSeek, Qwen) via MCP tools. The goal is delivering near-flagship code quality at 10–20% of the cost.
@@ -58,7 +73,7 @@ Once design is approved:
 - Split into tasks of ~30 min – 2 hours each
 - Every task must produce a runnable system — `main` is always green
 - A task that adds an interface but no caller is forbidden — either include the caller or stub it
-- Track tasks as checkboxes in the GitHub issue
+- Track tasks as **sub-issues under the parent epic**. Each sub-issue body follows the briefing template in [`docs/governance.md` § Task tracking](docs/governance.md#task-tracking). Checkboxes inline in the parent issue body are no longer used for task tracking.
 
 ### 4. Implement one task per PR
 
