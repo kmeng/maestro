@@ -118,13 +118,29 @@ users. Epic 0 ships the loader extension as a small task.
 
 A localhost HTTP server that:
 
-- Binds to a stable preferred port. Falls back to a strategy TBD in pass 2
-  when the port is taken.
+- Binds to a stable preferred port. Default `19830`. The preferred port is
+  user-configurable in `~/.maestro/settings.yaml`; transient overrides via
+  a `--port` CLI flag.
 - Serves the empty-shell Web UI as a single-page app, plus whatever
   bare-minimum API endpoints the shell needs (likely just a health check
   and a "what version of Maestro is this" endpoint).
 - Runs in the foreground of the user-launched process. No daemonization in
   v0.0.3.
+
+#### Port-conflict strategy
+
+When the preferred port is already in use, scan upward through the next
+**10** ports (preferred + 1 through preferred + 10). Bind to the first
+free one. Print the chosen URL on stdout so the user can open it.
+
+If all 11 ports in the scan window are taken, fail with a clear message
+("ports `<preferred>`–`<preferred+10>` are all in use; pass `--port N` to
+override") and exit. Pass-2 design call; reversible.
+
+The preferred port persists across launches so a user's bookmark to
+`http://localhost:19830` keeps working when nothing else has taken the
+port. Auto-fallback runs only on collision; the URL stays stable in the
+common case.
 
 ### Tech-stack choice
 
@@ -157,10 +173,10 @@ The Web UI process is Python.
 
 ### Failure modes
 
-- **Port in use.** Pass-2 strategy. Candidates: pick the next free port and
-  show it to the user; fail with a clear message and a `--port` override;
-  bind to `:0` and write the chosen port into a discoverable file. Picking
-  one is a pass-2 decision.
+- **Port in use.** Auto-fallback: scan +1 through +10 from preferred,
+  bind to the first free, print the chosen URL. If all 11 ports are
+  taken, fail with the `--port` override hint. See the "Port-conflict
+  strategy" subsection above.
 - **Browser not auto-opened.** Acceptable. Print the URL to the terminal.
   Auto-open is nice-to-have, not required.
 - **Web UI process crashes.** MCP server keeps working. User restarts the
@@ -198,7 +214,7 @@ tasks.
 
 - ~~**OPEN-0.1.** Web framework choice (FastAPI vs Flask vs other). Pass-2 ADR.~~ **Resolved**: FastAPI + uvicorn — see [ADR-0001](../adr/0001-web-framework-fastapi.md).
 - ~~**OPEN-0.2.** Frontend approach (no-build progressive HTML vs proper SPA framework).~~ **Resolved**: no-build HTML + htmx (+ optional Alpine.js), vendored — see [ADR-0002](../adr/0002-frontend-no-build-htmx.md).
-- **OPEN-0.3.** Port-conflict strategy. Pass-2 decision.
+- ~~**OPEN-0.3.** Port-conflict strategy.~~ **Resolved**: default port `19830`; on conflict, scan +1 through +10 and bind to the first free; if all 11 are taken, fail with a clear error and the `--port` override hint. Persisted preferred port in `~/.maestro/settings.yaml`. Detail in the "Port-conflict strategy" subsection above.
 - ~~**OPEN-0.4.** Where does config live — `~/.maestro/`, project-local `.maestro/`, or hybrid?~~ **Resolved**: hybrid (project-primary, user-secondary) — see [ADR-0003](../adr/0003-shared-state-file-layout.md).
 - **OPEN-0.5.** Single-process-mode for development convenience? It would
   be tempting to allow `python server.py` to also start the HTTP server in
