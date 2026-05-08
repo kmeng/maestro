@@ -40,25 +40,59 @@ can refer to team members by friendly aliases.
 
 ## Functional design
 
-### First-launch wizard
+### First-launch wizard — four steps
 
-The first time the user opens Maestro's Web UI in a project (or globally —
-location of the config home is OPEN), the Web UI detects there is no team
-config and walks the user through a wizard:
+When the Web UI detects no `team.yaml` for the active project (or when
+the user re-enters the wizard from the menu), four linear steps:
 
-1. **Introduction.** What Maestro does. What "the team" means. That
-   Architect is the user's Claude Code session, not a team member.
-2. **Role catalog tour.** Show the four instantiable roles, each with: a
-   short description, the default model bound to it (per
-   `architecture.md`), and an editable "model" field if the user wants to
-   override at the role level.
-3. **Member naming.** For each role, the user gives the member a name
-   (e.g., the PM is "Alex"). One member per role in v0.0.3. Default names
-   may be offered.
-4. **Confirmation.** Show the resulting team. Save.
+**Step 1 — Welcome.** Plain-English orientation: what Maestro does,
+what a "team" means, that the four roles work together, that Architect
+(the user's Claude Code session) is **not** configurable here. No form
+inputs. One button forward.
 
-Re-running the wizard from the menu later edits the existing team rather
-than creating a new one.
+**Step 2 — Role catalog tour.** All four roles on one screen, in order
+PM → Senior → Junior → Documentarian. For each role:
+
+- A short description (1–2 sentences).
+- An editable `model` field, pre-filled with the
+  [`architecture.md`](../architecture.md) default. Curated dropdown of
+  known model IDs plus a "custom…" escape hatch that flips to free
+  text. Validation rules from D2 apply regardless of input source.
+- An editable `member` field, pre-filled with a suggested alias (Alex /
+  Sam / Jamie / Drew). User can accept, edit, or replace. Required.
+
+Inline validation as the user types. "Next" button enabled only when
+all four rows pass validation.
+
+**Step 3 — Confirm.** Read-only summary of the four (role, member,
+model) rows. Two buttons: **Save** (POST to `/api/team` → write
+`team.yaml`) and **Back to edit** (returns to step 2 with current
+values preserved).
+
+**Step 4 — Done.** "Team saved" confirmation. Link to the standing
+role-catalog view (where future row-by-row edits happen). Close button
+returns the user to the Web UI's main page.
+
+### Re-entry behavior
+
+The wizard is **full-walk** every time. Re-entry from the menu loads
+the current `team.yaml` values into step 2's form (instead of defaults)
+and walks all four steps again.
+
+Row-by-row "edit just this one thing" is the standing role-catalog
+view's job, not the wizard's. Two surfaces, two purposes:
+
+- **Wizard** = "I want to think about my whole team again."
+- **Role catalog** = "I want to change one row."
+
+### Cancel / back semantics
+
+- A **Cancel** button is visible on steps 2 and 3 (not on step 1, not
+  on step 4). Clicking cancel returns to the pre-wizard state with no
+  writes — partial state is never persisted.
+- The **Back** button on step 3 returns to step 2 with edits preserved
+  in browser memory.
+- The browser **back button** is treated as Cancel: discard, no write.
 
 ### Role catalog (standing view)
 
@@ -223,9 +257,7 @@ High-level milestones.
 - ~~**OPEN-1.1.** Config storage location.~~ **Resolved by Epic 0 pass-2**: project-local `<project-root>/.maestro/team.yaml` (committed by default). User-global config home (`~/.maestro/`) is reserved for credentials, the recent-projects registry, and user preferences — not team composition. See [ADR-0003](../adr/0003-shared-state-file-layout.md).
 - ~~**OPEN-1.2.** Config format — YAML vs JSON.~~ **Resolved**: YAML, via `pyyaml` — see [ADR-0004](../adr/0004-team-config-format-and-schema.md).
 - ~~**OPEN-1.3.** Schema-level shape of role-level model override.~~ **Resolved**: no separate "override" mechanism. The user simply sets `model:` to whatever they want. Defaults pre-filled by wizard, never implicit. See [ADR-0004](../adr/0004-team-config-format-and-schema.md).
-- **OPEN-1.4.** First-launch wizard re-entry. Should re-running the wizard
-  from the menu walk through all steps again, or jump to the first
-  unfilled / unconfirmed step? Pass-2 UX call.
+- ~~**OPEN-1.4.** First-launch wizard re-entry.~~ **Resolved**: full re-walk every time, with current values pre-filled. The standing role-catalog view handles row-by-row edits; the wizard is the "think about my whole team" surface. Detail in the wizard subsection above.
 - **OPEN-1.5.** 1:N triggers. When v0.0.3's 1:1 limit is felt as a
   constraint by users (or by Maestro itself dogfooding), what does the
   data model migration look like? Captured here for visibility — actual
