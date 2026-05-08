@@ -1,11 +1,15 @@
 # Design: Epic 1 — team composition
 
 **Issue**: #13
-**Status**: draft
+**Status**: approved
 
-> Pass-1 draft. Establishes the user-visible flow and the role/member model.
-> Config storage location and format, plus the schema for role-level model
-> override, are deferred to v0.0.3 design pass 2.
+> Approved after pass-2 (D1–D6, 2026-05-08). Schema, validation rules,
+> wizard UX, MCP-server fallback semantics, task breakdown, and
+> language are all resolved. Implementation tasks T1.1–T1.7 below are
+> PR-sized closed loops, ready to land in order against `v0.0.3` —
+> after Epic 0 T0.1–T0.4 land first.
+>
+> ADR produced: [0004](../adr/0004-team-config-format-and-schema.md).
 
 ## Problem
 
