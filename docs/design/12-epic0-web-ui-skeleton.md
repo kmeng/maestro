@@ -1,12 +1,16 @@
 # Design: Epic 0 — local Web UI skeleton
 
 **Issue**: #12
-**Status**: draft
+**Status**: approved
 
-> Pass-1 draft. Establishes the process model and the shape of the
-> shared-state contract. Tech-stack choices, port-conflict strategy, and the
-> precise file layout are deferred to v0.0.3 design pass 2 — almost certainly
-> the first ADR trigger of v0.0.3.
+> Approved after pass-2 (D1–D6, 2026-05-08). Tech-stack, shared-state
+> layout, port-conflict strategy, and dev-mode policy are all resolved.
+> Implementation tasks T0.1–T0.7 below are PR-sized closed loops, ready
+> to land in order against `v0.0.3`.
+>
+> ADRs produced: [0001](../adr/0001-web-framework-fastapi.md),
+> [0002](../adr/0002-frontend-no-build-htmx.md),
+> [0003](../adr/0003-shared-state-file-layout.md).
 
 ## Problem
 
@@ -76,49 +80,113 @@ filesystem. This is load-bearing:
   user can configure Maestro before Claude Code is running, and observe
   Maestro after a Claude Code session ends.
 
-### Shared-state contract (skeleton)
+### Shared-state contract
 
-Epic 0 defines that there is a shared-state contract; pass 2 picks the
-exact shapes. The contract has two parts:
+The hybrid layout decided in [ADR-0003](../adr/0003-shared-state-file-layout.md):
 
-- **Config home** — where role/member/model bindings live. Read by both
-  processes. Written primarily by the Web UI (Epic 1). Candidate locations
-  to be evaluated in pass 2: `~/.maestro/`, project-local `.maestro/`, or a
-  hybrid. The choice has implications for project portability and is one of
-  Epic 1's open questions too.
-- **Dispatch log location** — where the MCP server writes invocation
-  events. Read by the Web UI (Epic 3). Candidate formats: JSONL file,
-  SQLite. Decision lives in Epic 3.
+```
+~/.maestro/                             # user-global
+├── credentials.env                     # API keys
+├── projects.json                       # known project paths (recent-projects UI)
+└── settings.yaml                       # user preferences
 
-Epic 0's pass-2 deliverable is a documented file layout and a tiny module
-both processes import to find these paths. Epic 0 does **not** define the
-log schema (that's Epic 3) or the config schema (that's Epic 1).
+<project-root>/.maestro/                # project-local; in user's git repo
+├── team.yaml                           # role→model bindings (Epic 1 schema)
+├── logs/
+│   └── dispatch.<format>               # dispatch log (Epic 3 format)
+└── .gitignore                          # ships with: logs/
+```
+
+**Per-user state** lives in `~/.maestro/`: credentials, recent-projects
+registry, user preferences. Never written into user projects.
+
+**Per-project state** lives in `<project-root>/.maestro/`: `team.yaml`
+is committed by default (team composition is a project decision); `logs/`
+is gitignored via a scaffolding-supplied `.maestro/.gitignore`.
+
+Both processes consume paths through a single `maestro/paths.py` module.
+Code never hard-codes paths.
+
+Epic 0 owns the path module and the directory creation. Epic 0 does **not**
+define the schemas (`team.yaml` is Epic 1; dispatch log format is Epic 3).
+
+### `.env` loader migration
+
+v0.0.2's project-local `.env` loader (issue #6) is extended in v0.0.3 to
+also check `~/.maestro/credentials.env`. Precedence (highest first):
+process env → project `.env` → `~/.maestro/credentials.env`. v0.0.2
+behavior is preserved at higher precedence — no regression for existing
+users. Epic 0 ships the loader extension as a small task.
 
 ### HTTP server
 
 A localhost HTTP server that:
 
-- Binds to a stable preferred port. Falls back to a strategy TBD in pass 2
-  when the port is taken.
+- Binds to a stable preferred port. Default `19830`. The preferred port is
+  user-configurable in `~/.maestro/settings.yaml`; transient overrides via
+  a `--port` CLI flag.
 - Serves the empty-shell Web UI as a single-page app, plus whatever
   bare-minimum API endpoints the shell needs (likely just a health check
   and a "what version of Maestro is this" endpoint).
 - Runs in the foreground of the user-launched process. No daemonization in
   v0.0.3.
 
-### Tech-stack choice — deferred
+#### Port-conflict strategy
 
-The Web UI process is Python. The choices below are pass-2 ADR territory:
+When the preferred port is already in use, scan upward through the next
+**10** ports (preferred + 1 through preferred + 10). Bind to the first
+free one. Print the chosen URL on stdout so the user can open it.
 
-- Web framework. FastAPI is a strong candidate (Pythonic, async, good docs,
-  serves static assets, integrates with Pydantic which the MCP server may
-  also benefit from). Flask is the conservative fallback. The decision is a
-  pass-2 ADR.
-- Frontend. Two camps: (a) plain HTML + a tiny progressive-enhancement JS
-  layer, no build step; (b) a proper SPA framework (Svelte, Vue, React).
-  The first reduces install friction and dependency surface; the second
-  scales better for Epic 3's live execution-flow view. The decision is a
-  pass-2 ADR.
+If all 11 ports in the scan window are taken, fail with a clear message
+("ports `<preferred>`–`<preferred+10>` are all in use; pass `--port N` to
+override") and exit. Pass-2 design call; reversible.
+
+The preferred port persists across launches so a user's bookmark to
+`http://localhost:19830` keeps working when nothing else has taken the
+port. Auto-fallback runs only on collision; the URL stays stable in the
+common case.
+
+### Tech-stack choice
+
+The Web UI process is Python.
+
+- **Web framework: FastAPI**, served by uvicorn. Decided in pass 2; rationale
+  in [ADR-0001](../adr/0001-web-framework-fastapi.md). FastAPI's native SSE
+  primitives (via `sse-starlette`) and Pydantic-first design are the
+  load-bearing reasons — they directly enable Epic 3's live view and remove
+  schema duplication with the MCP SDK.
+- **Frontend: no-build HTML with htmx + optional Alpine.js**, vendored as
+  static assets. Decided in pass 2; rationale in
+  [ADR-0002](../adr/0002-frontend-no-build-htmx.md). FastAPI returns HTML
+  fragments; htmx handles AJAX and SSE→DOM swaps declaratively. No
+  Node.js, no build step, no `node_modules`. SPA frameworks were rejected
+  because the UI surface (forms + a live list) doesn't earn their cost
+  and they would force a Node toolchain into Maestro's distribution.
+
+### Development affordances
+
+The two-process model is honest about production but inconvenient during
+development of Maestro itself. Three affordances support dev workflows
+without compromising the architecture:
+
+- **Hot-reload on the Web UI.** Run via `uvicorn maestro.webui:app
+  --reload --port 19830`. FastAPI/uvicorn ship this for free; no Maestro
+  code needed.
+- **Synthetic dispatch-event emitter** — `scripts/dev_emit_dispatch.py`.
+  A small developer-only script that appends events to the active
+  project's dispatch log. Lets a contributor test the Web UI's live view
+  without Claude Code or the real MCP server in the loop. Implementation
+  is trivial once Epic 3 pins the log format; Epic 0 does not block on
+  Epic 3 for this — the script can be added in the same PR cycle as the
+  log format decision.
+- **No shared-process dev-mode.** The MCP server does not optionally
+  thread-host the Web UI. Sharing a process would create a back-channel
+  that doesn't exist in production, hiding bugs in the real
+  filesystem-only flow. The cost (contributors keep two terminals open)
+  is small and accepted.
+
+A "replay an existing dispatch log" mode in the Web UI is parked for
+post-v0.0.3.
 
 ### Affected modules
 
@@ -134,10 +202,10 @@ The Web UI process is Python. The choices below are pass-2 ADR territory:
 
 ### Failure modes
 
-- **Port in use.** Pass-2 strategy. Candidates: pick the next free port and
-  show it to the user; fail with a clear message and a `--port` override;
-  bind to `:0` and write the chosen port into a discoverable file. Picking
-  one is a pass-2 decision.
+- **Port in use.** Auto-fallback: scan +1 through +10 from preferred,
+  bind to the first free, print the chosen URL. If all 11 ports are
+  taken, fail with the `--port` override hint. See the "Port-conflict
+  strategy" subsection above.
 - **Browser not auto-opened.** Acceptable. Print the URL to the terminal.
   Auto-open is nice-to-have, not required.
 - **Web UI process crashes.** MCP server keeps working. User restarts the
@@ -147,15 +215,17 @@ The Web UI process is Python. The choices below are pass-2 ADR territory:
 
 ## Task breakdown
 
-High-level milestones. Pass-2 of this design will split each into PR-sized
-tasks.
+PR-sized closed loops. Each PR keeps `main` runnable. Order is the
+dependency order; T0.6 may land in parallel with T0.3–T0.5 since it
+doesn't touch the Web UI process.
 
-- [ ] T0.1 — Pass-2 design: tech-stack ADR (web framework + frontend approach)
-- [ ] T0.2 — Pass-2 design: shared-state file layout (config home path, dispatch log path)
-- [ ] T0.3 — Implement: minimal HTTP server with empty-shell page, runnable via a single command
-- [ ] T0.4 — Implement: shared paths module, imported (no-op) from MCP server entry point
-- [ ] T0.5 — Implement: port-conflict fallback strategy
-- [ ] T0.6 — Verify: MCP `cheap_code_gen` path is unchanged end-to-end
+- [ ] **T0.1** — Add `maestro/paths.py` exposing the [ADR-0003](../adr/0003-shared-state-file-layout.md) path API. Imported by a no-op call from the MCP server entry point so the module isn't orphaned. Unit tests on path functions; smoke: MCP server still starts. (~1h)
+- [ ] **T0.2** — Extend the `.env` loader to also check `~/.maestro/credentials.env`. Precedence: process env → project `.env` → user file. Unit tests on precedence; smoke: existing project `.env` resolution unchanged. (~30m)
+- [ ] **T0.3** — Add `fastapi`, `uvicorn`, `sse-starlette` to `requirements.txt`. Add `maestro/webui/__init__.py` with a minimal app: health endpoint and version endpoint. No real page yet. Unit tests on endpoints; smoke: `curl /health` returns 200. (~1h)
+- [ ] **T0.4** — Add empty-shell page at `GET /`. Vendor `htmx.min.js` under `webui/static/vendor/`. Page links htmx but has no interactivity yet — Maestro-branded placeholder. Smoke: open URL in browser, confirm page loads. (~1h)
+- [ ] **T0.5** — Add launcher: console script (e.g., `maestro-webui`) wired into `pyproject.toml`, plus port-conflict strategy from D4 (default `19830`, scan +1..+10, error at cap). Unit test the port-scan helper; smoke: run with another process on `19830`, confirm fallback. (~1.5h)
+- [ ] **T0.6** — Add `scripts/dev_emit_dispatch.py` — stub version that writes a placeholder event into `<project>/.maestro/logs/`. Real schema lands in Epic 3; this PR establishes the script and CLI shape. Smoke: run script, verify file appears. (~30m)
+- [ ] **T0.7** — End-to-end verification PR. Documented manual smoke test: clean install → `pip install -e .` → `maestro-webui` → browser at `http://localhost:19830` → page renders → `cheap_code_gen` from a Claude Code session still works unchanged. May land as a CI-runnable script if feasible. (~1h)
 
 ## Acceptance criteria
 
@@ -173,19 +243,11 @@ tasks.
 
 ## Open questions
 
-- **OPEN-0.1.** Web framework choice (FastAPI vs Flask vs other). Pass-2
-  ADR.
-- **OPEN-0.2.** Frontend approach (no-build progressive HTML vs proper
-  SPA framework). Pass-2 ADR. Constraint: must support Epic 3's live
-  execution-flow view without becoming a maintenance burden.
-- **OPEN-0.3.** Port-conflict strategy. Pass-2 decision.
-- **OPEN-0.4.** Where does config live — `~/.maestro/`, project-local
-  `.maestro/`, or hybrid? Couples to Epic 1. Pass-2 decision, made jointly
-  with Epic 1.
-- **OPEN-0.5.** Single-process-mode for development convenience? It would
-  be tempting to allow `python server.py` to also start the HTTP server in
-  a thread, for ease of testing during development. Trade-off: convenience
-  vs. enforcing the two-process discipline. Decide in pass 2.
+- ~~**OPEN-0.1.** Web framework choice (FastAPI vs Flask vs other). Pass-2 ADR.~~ **Resolved**: FastAPI + uvicorn — see [ADR-0001](../adr/0001-web-framework-fastapi.md).
+- ~~**OPEN-0.2.** Frontend approach (no-build progressive HTML vs proper SPA framework).~~ **Resolved**: no-build HTML + htmx (+ optional Alpine.js), vendored — see [ADR-0002](../adr/0002-frontend-no-build-htmx.md).
+- ~~**OPEN-0.3.** Port-conflict strategy.~~ **Resolved**: default port `19830`; on conflict, scan +1 through +10 and bind to the first free; if all 11 are taken, fail with a clear error and the `--port` override hint. Persisted preferred port in `~/.maestro/settings.yaml`. Detail in the "Port-conflict strategy" subsection above.
+- ~~**OPEN-0.4.** Where does config live — `~/.maestro/`, project-local `.maestro/`, or hybrid?~~ **Resolved**: hybrid (project-primary, user-secondary) — see [ADR-0003](../adr/0003-shared-state-file-layout.md).
+- ~~**OPEN-0.5.** Single-process-mode for development convenience?~~ **Resolved**: no — keep two processes strictly separated even in dev. Dev convenience comes from `uvicorn --reload` (free) and a `scripts/dev_emit_dispatch.py` synthetic-event emitter (small). Detail in the "Development affordances" subsection.
 - **OPEN-0.6.** Web UI auto-launch from a Claude Code session — explicitly
   out of scope here, belongs to Epic 4. Recorded so it isn't accidentally
   scope-creeped into Epic 0.
