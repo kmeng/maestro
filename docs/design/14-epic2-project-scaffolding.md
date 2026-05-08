@@ -85,24 +85,48 @@ The take-over flow is governed by three guarantees:
 
 ## Technical design
 
-### Two template sets
+### Template sets — decided
 
-The pass-2 work splits Maestro's governance corpus into two sets:
+Pass-2 D1 resolves both sets. Full rationale in
+[ADR-0005](../adr/0005-scaffolding-template-set.md).
 
-- **Collaboration essentials.** What a project needs in order to work
-  with Maestro's AI team. Candidate inclusions (subject to pass-2 vetting):
-  a Maestro section for CLAUDE.md describing the team and how to dispatch,
-  a `.maestro/` config home (or project-local config files, depending on
-  Epic 1 OPEN-1.1's resolution), a minimal docs/design/ entry-point if
-  the project doesn't already have one.
-- **Internal-project conventions.** What Maestro itself uses to govern
-  itself. Candidate inclusions: BUILD_LOG.md, the journal directory and
-  README, the full ADR scheme, full governance.md import, design doc
-  template embedded in docs/design/. None of these go into take-over
-  mode by default.
+#### Take-over set (2 files)
 
-The pass-2 design produces an explicit list of files in each set with
-rationale.
+| File | Content | Language |
+|---|---|---|
+| `.maestro/.gitignore` | `logs/` | (no prose) |
+| `CLAUDE.md` | Delimited Maestro section appended (or full file if absent) | English (Claude Code reads it) |
+
+The wizard runs after take-over and writes `.maestro/team.yaml` —
+take-over itself does not.
+
+#### New-project set (4 files)
+
+| File | Content | Language |
+|---|---|---|
+| `.gitignore` | Python defaults + `.maestro/logs/` | (no prose) |
+| `README.md` | One-paragraph project stub | Chinese |
+| `CLAUDE.md` | Delimited Maestro section + user placeholder | English / Chinese (mixed by reader) |
+| `.maestro/.gitignore` | `logs/` | (no prose) |
+
+`git init` runs first; the wizard runs after to write `team.yaml`.
+
+#### Internal-project convention set — deliberately not shipped
+
+`BUILD_LOG.md`, `docs/journal/`, `docs/design/` template, `docs/adr/`
+template, `docs/governance.md`, `docs/architecture.md`,
+`docs/known-issues.md`, `ROADMAP.md` — none of these go into either
+set. They are Maestro's internal hygiene; user projects that want
+them can copy from Maestro's repo. Rationale in ADR-0005.
+
+#### CLAUDE.md Maestro section format
+
+Delimited by `<!-- maestro:start v=1 -->` / `<!-- maestro:end v=1 -->`.
+HTML comments — invisible in rendered markdown, unambiguous in
+substring search. Versioned on the delimiter so future content
+changes ship with a migration path. H2 heading (`##`) so it slots in
+regardless of the host file's heading style. English content — Claude
+Code is the reader.
 
 ### Take-over mechanics
 
@@ -178,8 +202,7 @@ High-level milestones.
 
 ## Open questions
 
-- **OPEN-2.1.** Exact membership of the "collaboration essential" template
-  set vs the "internal-project convention" template set. Pass-2 design.
+- ~~**OPEN-2.1.** Exact membership of the "collaboration essential" template set vs the "internal-project convention" template set.~~ **Resolved**: take-over set is `.maestro/.gitignore` + delimited CLAUDE.md section; new-project set adds `.gitignore` + `README.md` stub. Internal-project conventions are explicitly excluded. See [ADR-0005](../adr/0005-scaffolding-template-set.md).
 - **OPEN-2.2.** Merge UX for pre-existing CLAUDE.md (and any other
   mergeable file). Delimited section markers? Section header version?
   Pass-2 design.
