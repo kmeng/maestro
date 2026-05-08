@@ -159,6 +159,31 @@ The Web UI process is Python.
   because the UI surface (forms + a live list) doesn't earn their cost
   and they would force a Node toolchain into Maestro's distribution.
 
+### Development affordances
+
+The two-process model is honest about production but inconvenient during
+development of Maestro itself. Three affordances support dev workflows
+without compromising the architecture:
+
+- **Hot-reload on the Web UI.** Run via `uvicorn maestro.webui:app
+  --reload --port 19830`. FastAPI/uvicorn ship this for free; no Maestro
+  code needed.
+- **Synthetic dispatch-event emitter** — `scripts/dev_emit_dispatch.py`.
+  A small developer-only script that appends events to the active
+  project's dispatch log. Lets a contributor test the Web UI's live view
+  without Claude Code or the real MCP server in the loop. Implementation
+  is trivial once Epic 3 pins the log format; Epic 0 does not block on
+  Epic 3 for this — the script can be added in the same PR cycle as the
+  log format decision.
+- **No shared-process dev-mode.** The MCP server does not optionally
+  thread-host the Web UI. Sharing a process would create a back-channel
+  that doesn't exist in production, hiding bugs in the real
+  filesystem-only flow. The cost (contributors keep two terminals open)
+  is small and accepted.
+
+A "replay an existing dispatch log" mode in the Web UI is parked for
+post-v0.0.3.
+
 ### Affected modules
 
 - New: `maestro/webui/` (or similar) — the Web UI process entry point,
@@ -216,10 +241,7 @@ tasks.
 - ~~**OPEN-0.2.** Frontend approach (no-build progressive HTML vs proper SPA framework).~~ **Resolved**: no-build HTML + htmx (+ optional Alpine.js), vendored — see [ADR-0002](../adr/0002-frontend-no-build-htmx.md).
 - ~~**OPEN-0.3.** Port-conflict strategy.~~ **Resolved**: default port `19830`; on conflict, scan +1 through +10 and bind to the first free; if all 11 are taken, fail with a clear error and the `--port` override hint. Persisted preferred port in `~/.maestro/settings.yaml`. Detail in the "Port-conflict strategy" subsection above.
 - ~~**OPEN-0.4.** Where does config live — `~/.maestro/`, project-local `.maestro/`, or hybrid?~~ **Resolved**: hybrid (project-primary, user-secondary) — see [ADR-0003](../adr/0003-shared-state-file-layout.md).
-- **OPEN-0.5.** Single-process-mode for development convenience? It would
-  be tempting to allow `python server.py` to also start the HTTP server in
-  a thread, for ease of testing during development. Trade-off: convenience
-  vs. enforcing the two-process discipline. Decide in pass 2.
+- ~~**OPEN-0.5.** Single-process-mode for development convenience?~~ **Resolved**: no — keep two processes strictly separated even in dev. Dev convenience comes from `uvicorn --reload` (free) and a `scripts/dev_emit_dispatch.py` synthetic-event emitter (small). Detail in the "Development affordances" subsection.
 - **OPEN-0.6.** Web UI auto-launch from a Claude Code session — explicitly
   out of scope here, belongs to Epic 4. Recorded so it isn't accidentally
   scope-creeped into Epic 0.
