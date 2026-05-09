@@ -462,6 +462,14 @@ PRs in path-2 compressed flow. Each PR keeps `v0.0.3` runnable.
   recurring annoyance.
 - **OPEN-5.5**: cost telemetry per role (token spend, calls/day). Epic
   3's dispatch log will eventually carry this; not duplicated here.
+- **OPEN-5.7**: librarian's quote hit rate. T5.1 verification observed
+  `deepseek-v4-flash` producing ~40% verbatim hit rate on prose
+  passages with markdown emphasis (60% dropped by the verifier). The
+  role is functional — bad quotes never reach the orchestrator — but
+  output volume is reduced. Trigger to revisit: usage data shows
+  librarian routinely producing too few hard_constraints to be useful.
+  Remediation paths: further prompt tightening, switch to
+  `deepseek-v4-pro`, or adjust the verifier's normalization rules.
 - ~~**OPEN-5.6**: should the renamed `coder` continue using
   `deepseek-coder` or switch to `deepseek-v4-pro`?~~ **Resolved
   2026-05-09 during T5.1 kickoff**: `coder` switches to

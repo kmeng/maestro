@@ -313,10 +313,36 @@ LIBRARIAN_SYSTEM_PROMPT = """You are a librarian on an AI software team. Your jo
 reference document and extract exactly what the caller needs for the task
 they describe. You return STRICT JSON matching the contract below.
 
-Strict rules:
-- In `hard_constraints`, every quote MUST be VERBATIM from the source
-  document. Paraphrasing here is a contract violation. If you cannot
-  find a verbatim constraint, omit the entry rather than invent one.
+The `hard_constraints[*].quote` field has a VERBATIM contract.
+The handler that wraps you VERIFIES every quote against the source
+document before returning to the caller. Quotes that do not appear in
+the source are silently dropped from your output and reported as
+concerns. To pass verification, every quote MUST satisfy:
+
+- All non-whitespace characters identical to source, in the same order.
+- Markdown formatting preserved exactly: `**bold**`, backticks, square
+  brackets, parentheses, em-dashes — they all stay.
+- You MAY normalize whitespace (line breaks → single space; collapse
+  runs of spaces) — the verifier accounts for this.
+- You MAY NOT add, remove, or alter any other character — including
+  appending a period, dropping a leading word like "plus a", or
+  "cleaning up" stylistic markup.
+
+Examples of violations:
+- Source: `**X** enforces Y`, your quote: `X enforces Y`
+  → VIOLATION (dropped `**`).
+- Source: `plus a Z constant sourced from W`, your quote: `Z constant sourced from W.`
+  → VIOLATION (dropped "plus a", appended period).
+- Source: `text\\n  more text`, your quote: `text more text`
+  → OK (whitespace normalized).
+- Source: `**A** — B`, your quote: `**A** — B`
+  → OK (preserved markdown and dash).
+
+If you cannot find a verbatim constraint for a point you want to make,
+OMIT the entry rather than invent or rephrase. The summary field is
+where paraphrase belongs.
+
+Other rules:
 - In `summary`, paraphrase freely; this is your understanding.
 - In `recommend_full_read`, list section names where you are not
   confident your summary captures the nuance. Better to be honest
@@ -379,6 +405,37 @@ LIBRARIAN_TOOL = Tool(
         "required": ["query"],
     },
 )
+
+
+def _verify_verbatim_quotes(
+    quotes: list, source: str
+) -> tuple[list, list[str]]:
+    """Drop hard_constraints entries whose quote does not appear in source.
+
+    Whitespace is normalized on both sides (line wraps and indentation
+    collapse to single spaces) so the librarian can re-flow paragraphs
+    without false rejection. All other characters — markdown emphasis,
+    punctuation, exact wording — must match. ADR-0008 § Verbatim
+    verification: the verifier is the contract enforcer; the system
+    prompt is necessary but not sufficient.
+
+    Returns (kept, violation_notes). Violation notes describe each
+    dropped entry so the caller can see what didn't pass.
+    """
+    normalized_source = " ".join(source.split())
+    kept = []
+    violations = []
+    for i, hc in enumerate(quotes):
+        quote = hc.get("quote", "")
+        normalized_quote = " ".join(quote.split())
+        if normalized_quote and normalized_quote in normalized_source:
+            kept.append(hc)
+        else:
+            violations.append(
+                f"hard_constraints[{i}] not verbatim "
+                f"(section={hc.get('section', '?')!r}); dropped"
+            )
+    return kept, violations
 
 
 def _validate_librarian_output(data: Any) -> Optional[str]:
@@ -520,6 +577,24 @@ async def librarian_handler(arguments: dict) -> list[TextContent]:
     validation_error = _validate_librarian_output(parsed)
     if validation_error:
         return _error_response("output_schema_invalid", validation_error, raw=parsed)
+
+    # Verbatim contract enforcement: the system prompt asks for verbatim
+    # quotes but workers regularly drop markdown emphasis or paraphrase.
+    # The verifier is the actual contract — non-verbatim quotes never
+    # reach the orchestrator.
+    kept_quotes, violations = _verify_verbatim_quotes(
+        parsed["hard_constraints"], document_text
+    )
+    parsed["hard_constraints"] = kept_quotes
+    if violations:
+        summary_note = (
+            f"librarian self-validation dropped {len(violations)} "
+            f"non-verbatim quote(s) from hard_constraints "
+            f"(kept {len(kept_quotes)})"
+        )
+        parsed["concerns"] = (
+            [summary_note] + list(parsed.get("concerns", [])) + violations
+        )
 
     return [TextContent(
         type="text",
