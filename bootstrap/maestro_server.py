@@ -23,6 +23,8 @@ import json
 import os
 import sys
 import time
+import uuid
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
@@ -180,6 +182,124 @@ def _error_response(code: str, message: str, **extra: Any) -> list[TextContent]:
 
 
 # ============================================================
+# Async dispatch infrastructure (ADR-0009)
+#
+# Every worker tool returns a job_id immediately and runs the actual
+# work in a background asyncio task. The orchestrator polls
+# `job_status(job_id)` until terminal. Sidesteps Claude Code's hard-
+# coded ~60s MCP request timeout, which otherwise caps every worker
+# dispatch.
+# ============================================================
+
+
+@dataclass
+class JobRecord:
+    """One in-flight (or completed) worker job's state.
+
+    Held in a process-local dict; not persisted across server restarts
+    (v0.0.3 scope per ADR-0009). `result_text` mirrors what the
+    underlying handler would have returned synchronously — a JSON
+    envelope from librarian/reviewer/scribe, formatted text from coder.
+    """
+    job_id: str
+    tool: str
+    status: str  # "running" | "done" | "failed"
+    result_text: Optional[str] = None
+    error: Optional[str] = None
+    created_at: float = field(default_factory=time.time)
+    completed_at: Optional[float] = None
+
+
+_jobs: dict[str, JobRecord] = {}
+
+
+async def _run_in_background(
+    record: JobRecord, coro: Awaitable[list[TextContent]]
+) -> None:
+    """Run an impl coroutine and capture its result/exception in the record.
+
+    Impl-level errors are already shaped as `_error_response` envelopes by
+    the impl itself — those still land here as `done` with the envelope as
+    `result_text`. `failed` is reserved for unhandled exceptions in the
+    impl (i.e., bugs the role's own try/except didn't catch).
+    """
+    try:
+        result_list = await coro
+        record.result_text = result_list[0].text if result_list else ""
+        record.status = "done"
+    except Exception as e:
+        record.error = f"{type(e).__name__}: {e}"
+        record.status = "failed"
+    finally:
+        record.completed_at = time.time()
+
+
+def _enqueue_dispatch(
+    tool_name: str, coro: Awaitable[list[TextContent]]
+) -> list[TextContent]:
+    """Register a job, schedule the impl as a background task, return job_id."""
+    job_id = str(uuid.uuid4())
+    record = JobRecord(job_id=job_id, tool=tool_name, status="running")
+    _jobs[job_id] = record
+    asyncio.create_task(_run_in_background(record, coro))
+    return [TextContent(
+        type="text",
+        text=json.dumps({"job_id": job_id}, ensure_ascii=False),
+    )]
+
+
+JOB_STATUS_TOOL = Tool(
+    name="job_status",
+    description=(
+        "INFRASTRUCTURE TOOL — not a worker role. Poll the status of a "
+        "previously-dispatched worker job. Given a job_id (returned by "
+        "coder/librarian/reviewer/scribe), returns one of: "
+        "{\"status\": \"running\"} (worker still in flight); "
+        "{\"status\": \"done\", \"result_text\": ...} (work complete; "
+        "result_text is what the underlying tool would have returned "
+        "synchronously); or {\"status\": \"failed\", \"error\": ...} "
+        "(unhandled exception in worker impl). Caller polls this every "
+        "few seconds until terminal. DO NOT dispatch substantive work "
+        "to this tool — it is a status probe, not a worker."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "job_id": {
+                "type": "string",
+                "description": (
+                    "The job_id returned by an earlier worker dispatch. "
+                    "Format: UUID4 string."
+                ),
+            },
+        },
+        "required": ["job_id"],
+    },
+)
+
+
+async def job_status_handler(arguments: dict) -> list[TextContent]:
+    """Look up a job record and report its status to the orchestrator."""
+    job_id = arguments.get("job_id", "").strip()
+    if not job_id:
+        return _error_response("input_validation", "job_id is required")
+
+    record = _jobs.get(job_id)
+    if record is None:
+        return _error_response("job_not_found", f"no job with id {job_id}")
+
+    payload: dict[str, Any] = {"status": record.status, "tool": record.tool}
+    if record.status == "done":
+        payload["result_text"] = record.result_text
+    elif record.status == "failed":
+        payload["error"] = record.error
+    return [TextContent(
+        type="text",
+        text=json.dumps(payload, ensure_ascii=False),
+    )]
+
+
+# ============================================================
 # Role: coder (formerly cheap_code_gen)
 #
 # Generate code from a structured spec. The worker returns reasoning +
@@ -222,6 +342,14 @@ CODER_TOOL = Tool(
 
 
 async def coder_handler(arguments: dict) -> list[TextContent]:
+    """Enqueue the coder impl as a background job; return job_id immediately.
+
+    See ADR-0009. Caller polls `job_status(job_id)` until terminal.
+    """
+    return _enqueue_dispatch("coder", _coder_impl(arguments))
+
+
+async def _coder_impl(arguments: dict) -> list[TextContent]:
     """Dispatch a code-generation spec to DeepSeek and return the raw structured response."""
     spec = arguments.get("spec", "").strip()
     language = arguments.get("language", "").strip()
@@ -506,6 +634,14 @@ def _validate_librarian_output(data: Any) -> Optional[str]:
 
 
 async def librarian_handler(arguments: dict) -> list[TextContent]:
+    """Enqueue the librarian impl as a background job; return job_id immediately.
+
+    See ADR-0009. Caller polls `job_status(job_id)` until terminal.
+    """
+    return _enqueue_dispatch("librarian", _librarian_impl(arguments))
+
+
+async def _librarian_impl(arguments: dict) -> list[TextContent]:
     """Read a document (from file_path or inline) and extract content matching the query."""
     file_path = arguments.get("file_path")
     document_text = arguments.get("document_text")
@@ -764,6 +900,14 @@ def _validate_reviewer_output(data: Any) -> Optional[str]:
 
 
 async def reviewer_handler(arguments: dict) -> list[TextContent]:
+    """Enqueue the reviewer impl as a background job; return job_id immediately.
+
+    See ADR-0009. Caller polls `job_status(job_id)` until terminal.
+    """
+    return _enqueue_dispatch("reviewer", _reviewer_impl(arguments))
+
+
+async def _reviewer_impl(arguments: dict) -> list[TextContent]:
     """Judge whether code matches a spec; return structured verdict + findings."""
     spec = arguments.get("spec", "").strip()
     code = arguments.get("code", "").strip()
@@ -950,6 +1094,14 @@ def _validate_scribe_output(data: Any) -> Optional[str]:
 
 
 async def scribe_handler(arguments: dict) -> list[TextContent]:
+    """Enqueue the scribe impl as a background job; return job_id immediately.
+
+    See ADR-0009. Caller polls `job_status(job_id)` until terminal.
+    """
+    return _enqueue_dispatch("scribe", _scribe_impl(arguments))
+
+
+async def _scribe_impl(arguments: dict) -> list[TextContent]:
     """Draft a commit message and PR body from a diff + issue context."""
     diff = arguments.get("diff", "").strip()
     issue_number = arguments.get("issue_number")
@@ -1050,6 +1202,7 @@ TOOLS_REGISTRY: dict[str, tuple[Tool, ToolHandler]] = {
     LIBRARIAN_TOOL.name: (LIBRARIAN_TOOL, librarian_handler),
     REVIEWER_TOOL.name: (REVIEWER_TOOL, reviewer_handler),
     SCRIBE_TOOL.name: (SCRIBE_TOOL, scribe_handler),
+    JOB_STATUS_TOOL.name: (JOB_STATUS_TOOL, job_status_handler),
 }
 
 
