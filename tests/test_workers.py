@@ -249,6 +249,31 @@ def test_librarian_happy_path_with_inline_text(server, monkeypatch):
     assert call_kwargs["response_format"] == {"type": "json_object"}
 
 
+def test_librarian_resolves_relative_path_against_project_root(server, monkeypatch):
+    """Relative file_path resolves to repo root, not server CWD.
+
+    The MCP server's CWD is the launching client's working directory
+    (often unrelated to the repo); without this resolution, callers would
+    have to pass absolute paths for every doc — defeating ergonomics.
+    """
+    valid_output = {
+        "hard_constraints": [],
+        "summary": "",
+        "recommend_full_read": [],
+        "concerns": [],
+    }
+    mock_create = AsyncMock(return_value=_mock_deepseek_response(json.dumps(valid_output)))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    # README.md is committed at the repo root and exists under any clone.
+    result = asyncio.run(
+        server.librarian_handler({"file_path": "README.md", "query": "x"})
+    )
+    # Should NOT be a file_not_found error.
+    parsed = json.loads(result[0].text)
+    assert "error" not in parsed or parsed.get("error") != "file_not_found"
+
+
 def test_librarian_reads_file_and_passes_content_to_model(server, monkeypatch, tmp_path):
     """Worker reads the file directly — orchestrator passes only the path.
 
@@ -330,24 +355,67 @@ def test_verify_accepts_whitespace_normalized_match(server):
     assert violations == []
 
 
-def test_verify_rejects_markdown_stripped(server):
-    """The exact failure mode from T5.1 real-world test: dropping **bold**."""
+def test_verify_accepts_markdown_stripped(server):
+    """Worker may drop **bold** markers — verifier strips them on both sides.
+
+    This is the calibrated behavior per ADR-0008 § Verbatim verification:
+    bold is rendering, not content. v4-flash systematically drops `**`
+    from prose quotes; rejecting these would produce ~0% hit rate
+    without any actual contract value.
+    """
     source = "**Role-keyed map** enforces 1 role : 1 member"
     quotes = [{"quote": "Role-keyed map enforces 1 role : 1 member", "section": "§1"}]
     kept, violations = server._verify_verbatim_quotes(quotes, source)
-    assert kept == []
-    assert len(violations) == 1
-    assert "not verbatim" in violations[0]
-    assert "§1" in violations[0]
+    assert len(kept) == 1
+    assert violations == []
+
+
+def test_verify_accepts_either_with_or_without_bold(server):
+    """Worker can preserve `**` or strip it — both pass."""
+    source = "**A** is bold and B is plain"
+    quotes = [
+        {"quote": "**A** is bold", "section": "§1"},  # preserves bold
+        {"quote": "A is bold", "section": "§2"},      # strips bold
+    ]
+    kept, violations = server._verify_verbatim_quotes(quotes, source)
+    assert len(kept) == 2
+    assert violations == []
 
 
 def test_verify_rejects_paraphrase(server):
-    """Adding punctuation or dropping a leading word is a contract violation."""
+    """Adding punctuation or dropping a leading word is still a contract violation."""
     source = "plus a DEFAULT_MODELS constant sourced from architecture.md"
     quotes = [{"quote": "DEFAULT_MODELS constant sourced from architecture.md.", "section": "§T1.1"}]
     kept, violations = server._verify_verbatim_quotes(quotes, source)
     assert kept == []
     assert len(violations) == 1
+
+
+def test_verify_rejects_word_substitution(server):
+    """Substituting a word — even a synonym — is a contract violation."""
+    source = "the system must validate inputs before processing"
+    quotes = [{"quote": "the system must check inputs before processing", "section": "§1"}]
+    kept, violations = server._verify_verbatim_quotes(quotes, source)
+    assert kept == []
+    assert len(violations) == 1
+
+
+def test_verify_rejects_backtick_difference(server):
+    """Backticks carry semantic signal (literal identifier vs English word)."""
+    source = "the `pm` role is required"
+    quotes = [{"quote": "the pm role is required", "section": "§1"}]
+    kept, violations = server._verify_verbatim_quotes(quotes, source)
+    assert kept == []
+    assert len(violations) == 1
+
+
+def test_verify_preserves_underscore_identifiers(server):
+    """`__init__`-style identifiers must not be mangled by the verifier."""
+    source = "use `__init__` to set up the instance"
+    quotes = [{"quote": "use `__init__` to set up the instance", "section": "§1"}]
+    kept, violations = server._verify_verbatim_quotes(quotes, source)
+    assert len(kept) == 1
+    assert violations == []
 
 
 def test_verify_rejects_empty_quote(server):
@@ -359,27 +427,33 @@ def test_verify_rejects_empty_quote(server):
 
 
 def test_verify_mixes_pass_and_fail(server):
-    source = "**A** is bold and B is plain"
+    source = "**A** is bold and B is plain and C was original"
     quotes = [
-        {"quote": "B is plain", "section": "§1"},      # pass
-        {"quote": "A is bold", "section": "§2"},       # fail (dropped **)
-        {"quote": "**A** is bold", "section": "§3"},   # pass (preserved markdown)
+        {"quote": "B is plain", "section": "§1"},               # pass
+        {"quote": "A is bold", "section": "§2"},                # pass (markdown stripped)
+        {"quote": "**A** is bold", "section": "§3"},            # pass (preserved markdown)
+        {"quote": "C is original", "section": "§4"},            # fail (was → is)
     ]
     kept, violations = server._verify_verbatim_quotes(quotes, source)
-    assert len(kept) == 2
-    assert kept[0]["section"] == "§1"
-    assert kept[1]["section"] == "§3"
+    assert len(kept) == 3
+    assert {hc["section"] for hc in kept} == {"§1", "§2", "§3"}
     assert len(violations) == 1
-    assert "§2" in violations[0]
+    assert "§4" in violations[0]
 
 
 def test_librarian_drops_non_verbatim_and_reports_in_concerns(server, monkeypatch):
-    """End-to-end: handler runs verifier and reports dropped quotes."""
+    """End-to-end: handler runs verifier and reports dropped quotes.
+
+    The first quote is a word-level violation (substituted "the" with "a")
+    and gets dropped. The second is verbatim and kept. Confirms the
+    handler integrates the verifier and surfaces violations to the
+    caller via concerns.
+    """
     source_doc = "**Bold X** is a thing.\nA second statement appears here."
     output = {
         "hard_constraints": [
-            {"quote": "Bold X is a thing.", "section": "§A"},   # fail
-            {"quote": "A second statement appears here.", "section": "§B"},  # pass
+            {"quote": "X is the thing.", "section": "§A"},                    # fail (word change: "a" → "the")
+            {"quote": "A second statement appears here.", "section": "§B"},   # pass
         ],
         "summary": "two things",
         "recommend_full_read": [],

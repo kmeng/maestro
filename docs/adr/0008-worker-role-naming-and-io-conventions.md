@@ -83,18 +83,34 @@ testing). The system prompt alone does not enforce verbatim contracts:
 v4-flash was observed to strip markdown emphasis (`**X**` → `X`) and
 silently paraphrase quotes despite explicit prompt rules. Any role
 declaring a verbatim contract on a field MUST have its handler verify
-quotes against the source before returning. Convention:
+quotes against the source before returning.
 
-- Verification compares quote-vs-source after normalizing whitespace
-  (line wraps and indentation collapse to single spaces). This avoids
-  false rejection when the worker re-flows paragraph content. All
-  other characters — markdown emphasis, punctuation, exact wording —
-  must match.
+The contract is **semantic-verbatim, calibrated to word identity, not
+byte identity**. The orchestrator cares what the doc says, not how
+it's rendered. Convention:
+
+- Comparison normalizes whitespace (line wraps and indentation collapse
+  to single spaces). Workers may re-flow paragraph content freely.
+- Comparison strips markdown bold markers (`**X**` → `X`) on both
+  sides. Workers may preserve or omit `**` as they see fit.
+- All other characters must match exactly: backticks (`` `pm` `` is
+  semantically distinct from `pm` — the former is a literal
+  identifier), brackets, parentheses, em-dashes, punctuation. No
+  added or dropped words. No appended periods. No synonym
+  substitutions.
 - Non-verbatim entries are **dropped** from the field — they never
   reach the caller.
 - The handler appends a summary note plus per-entry violation lines
   to the response's `concerns` field so the caller can see what was
   dropped.
+
+This calibration was set after the initial "byte-strict including
+markdown" rule produced a 0–40% hit rate on prose passages from
+v4-flash, which strips bold markers reliably. Relaxing to
+word-identity preserves the contract's value (orchestrator gets
+word-accurate quotes) while restoring useful hit rate. Word-level
+violations (adding/dropping/changing words) are still rejected —
+that's what the contract is actually protecting against.
 
 The verifier is the contract enforcer; the system prompt is the
 expectation-setter. Both are needed, neither is sufficient alone.

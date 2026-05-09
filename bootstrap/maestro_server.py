@@ -313,30 +313,33 @@ LIBRARIAN_SYSTEM_PROMPT = """You are a librarian on an AI software team. Your jo
 reference document and extract exactly what the caller needs for the task
 they describe. You return STRICT JSON matching the contract below.
 
-The `hard_constraints[*].quote` field has a VERBATIM contract.
+The `hard_constraints[*].quote` field has a VERBATIM contract on words.
 The handler that wraps you VERIFIES every quote against the source
-document before returning to the caller. Quotes that do not appear in
-the source are silently dropped from your output and reported as
-concerns. To pass verification, every quote MUST satisfy:
+document before returning to the caller. Quotes that don't match are
+silently dropped from your output and reported as concerns.
 
-- All non-whitespace characters identical to source, in the same order.
-- Markdown formatting preserved exactly: `**bold**`, backticks, square
-  brackets, parentheses, em-dashes — they all stay.
-- You MAY normalize whitespace (line breaks → single space; collapse
-  runs of spaces) — the verifier accounts for this.
-- You MAY NOT add, remove, or alter any other character — including
-  appending a period, dropping a leading word like "plus a", or
-  "cleaning up" stylistic markup.
+The verifier is forgiving on rendering, strict on words:
 
-Examples of violations:
+- Whitespace: free to normalize. Line wraps and indentation in source
+  collapse to single spaces in the comparison.
+- Markdown bold (`**X**`): the verifier strips `**` from both sides
+  before comparing. You don't need to preserve bold markers — write
+  `X` or `**X**`, both pass.
+- All other characters: must match exactly. Backticks (`` `pm` ``
+  ≠ `pm`), brackets, parentheses, em-dashes, every punctuation mark.
+- Word identity: same words in the same order. Adding a period,
+  dropping a leading word like "plus a", or substituting a synonym
+  is a contract violation.
+
+Examples:
 - Source: `**X** enforces Y`, your quote: `X enforces Y`
-  → VIOLATION (dropped `**`).
+  → OK (markdown bold stripped by verifier).
 - Source: `plus a Z constant sourced from W`, your quote: `Z constant sourced from W.`
-  → VIOLATION (dropped "plus a", appended period).
+  → VIOLATION (dropped "plus a", appended period — word change).
 - Source: `text\\n  more text`, your quote: `text more text`
   → OK (whitespace normalized).
-- Source: `**A** — B`, your quote: `**A** — B`
-  → OK (preserved markdown and dash).
+- Source contains the backticked identifier `pm`, your quote: `pm` (no backticks)
+  → VIOLATION (backticks carry "literal identifier" meaning).
 
 If you cannot find a verbatim constraint for a point you want to make,
 OMIT the entry rather than invent or rephrase. The summary field is
@@ -407,27 +410,45 @@ LIBRARIAN_TOOL = Tool(
 )
 
 
+def _normalize_for_verbatim(text: str) -> str:
+    """Normalize text for semantic-verbatim comparison.
+
+    The verbatim contract is about word content, not rendering. We
+    therefore strip:
+      - Whitespace runs (line wraps, indentation → single space).
+      - Markdown bold markers (`**X**` becomes `X`). The orchestrator
+        cares what the doc says, not how it's emphasized.
+
+    What we deliberately do NOT strip:
+      - Backticks. `pm` (literal identifier) is a different signal from
+        `pm` (English word).
+      - Underscores. `__init__` is a Python identifier, not bold markup.
+      - Brackets, parens, em-dashes, all other punctuation. Word-level
+        identity must hold.
+    """
+    return " ".join(text.replace("**", "").split())
+
+
 def _verify_verbatim_quotes(
     quotes: list, source: str
 ) -> tuple[list, list[str]]:
-    """Drop hard_constraints entries whose quote does not appear in source.
+    """Drop hard_constraints entries whose quote does not match the source.
 
-    Whitespace is normalized on both sides (line wraps and indentation
-    collapse to single spaces) so the librarian can re-flow paragraphs
-    without false rejection. All other characters — markdown emphasis,
-    punctuation, exact wording — must match. ADR-0008 § Verbatim
-    verification: the verifier is the contract enforcer; the system
-    prompt is necessary but not sufficient.
+    Comparison uses semantic-verbatim normalization (whitespace +
+    markdown bold). Word-level changes — added, dropped, or substituted
+    words; punctuation that affects meaning — are still rejected. See
+    ADR-0008 § Verbatim verification for the convention; this function
+    is the contract enforcer.
 
     Returns (kept, violation_notes). Violation notes describe each
     dropped entry so the caller can see what didn't pass.
     """
-    normalized_source = " ".join(source.split())
+    normalized_source = _normalize_for_verbatim(source)
     kept = []
     violations = []
     for i, hc in enumerate(quotes):
         quote = hc.get("quote", "")
-        normalized_quote = " ".join(quote.split())
+        normalized_quote = _normalize_for_verbatim(quote)
         if normalized_quote and normalized_quote in normalized_source:
             kept.append(hc)
         else:
@@ -505,11 +526,21 @@ async def librarian_handler(arguments: dict) -> list[TextContent]:
     # The whole point of the role is to keep document_text out of the
     # caller's context — only the worker sees the bytes.
     if file_path:
+        # Resolve relative paths against the project root rather than the
+        # MCP server's CWD (which is the launching client's working
+        # directory, often unrelated to the repo). Lets callers pass
+        # repo-relative paths like "docs/design/13-...".
+        resolved_path = Path(file_path)
+        if not resolved_path.is_absolute():
+            resolved_path = _PROJECT_ROOT / resolved_path
         try:
-            with open(file_path, encoding="utf-8") as f:
+            with open(resolved_path, encoding="utf-8") as f:
                 document_text = f.read()
         except FileNotFoundError:
-            return _error_response("file_not_found", f"file_path not found: {file_path}")
+            return _error_response(
+                "file_not_found",
+                f"file_path not found: {file_path} (resolved: {resolved_path})",
+            )
         except Exception as e:
             return _error_response("file_read_error", f"{type(e).__name__}: {e}")
 
