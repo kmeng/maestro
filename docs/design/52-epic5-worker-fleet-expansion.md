@@ -334,6 +334,84 @@ Roles in shadow mode (orchestrator runs in parallel, both versions shown to user
 When the list is empty, no role is in shadow mode and the orchestrator
 dispatches all eligible work directly.
 
+### Async dispatch infrastructure
+
+**Added 2026-05-09 after T5.2 verification.** Both reviewer and scribe core
+implementations were initially attempted via `coder` dispatch. Both calls
+hit Claude Code's hard-coded MCP request timeout (~60s; not configurable —
+see [ADR-0009](../adr/0009-async-dispatch.md) for the investigation). The
+coder + v4-pro round-trip on detailed specs of the size used routinely in
+Maestro's Implementation-start protocol cannot fit in 60 seconds.
+
+Without a fix, this means: any sufficiently complex worker dispatch fails
+silently from the orchestrator's perspective, even when the worker
+completes server-side. Maestro's dogfooding command (worker-by-default for
+mechanical work) is undermined.
+
+**Decision**: refactor all four worker tools to an enqueue + poll pattern.
+
+```
+┌──────────────┐  call coder(spec)         ┌────────────────┐
+│ Orchestrator │ ─────────────────────────▶│ MCP server     │
+│              │ ◀──────────────────────── │ enqueue + ack  │
+│              │   {"job_id": "abc"}       │                │
+│              │                           │  ┌──────────┐  │
+│              │                           │  │background│  │
+│              │                           │  │ asyncio  │  │
+│              │                           │  │ task     │  │
+│              │                           │  └──────────┘  │
+│              │                           │       │        │
+│   poll       │                           │   completes    │
+│   ▼          │  call job_status("abc")   │       ▼        │
+│              │ ─────────────────────────▶│ lookup job dict│
+│              │ ◀──────────────────────── │                │
+│              │   {"status":"running"}    │                │
+│              │   ... wait ...            │                │
+│              │   call job_status("abc")  │                │
+│              │ ─────────────────────────▶│                │
+│              │ ◀──────────────────────── │                │
+│              │   {"status":"done",       │                │
+│              │    "result_text":"..."}   │                │
+└──────────────┘                           └────────────────┘
+```
+
+Each MCP call (enqueue + each poll) returns in <1 second. Worker work runs
+as long as it needs to in the background. The 60s ceiling no longer applies.
+
+**Job state**: process-local in-memory dict keyed by UUID. Persisted state
+across server restarts is out of scope for v0.0.3 — the bootstrap server is
+explicitly throwaway-tier. If a server restart loses an in-flight job, the
+orchestrator's polling fails with `job_not_found` and can choose to retry
+the original call. v0.0.4 / Epic 4 packaging revisits if needed.
+
+**Caller protocol** (orchestrator): every worker tool now returns a
+`job_id` immediately. The orchestrator polls `mcp__maestro__job_status`
+every ~2 seconds until it returns a terminal state. Sleep duration is the
+orchestrator's choice — it just affects responsiveness and polling
+overhead, not correctness.
+
+**Job result shape** in `job_status` response on `done`:
+- `{"status": "done", "tool": <role>, "result_text": "<exactly what the underlying handler would have returned>"}`
+
+Why `result_text` (the raw text content of the underlying handler's
+TextContent) rather than parsed JSON: roles return different shapes
+(librarian → JSON, coder → text-with-formatting, reviewer/scribe → JSON).
+A uniform string envelope keeps the protocol consistent. Caller parses
+based on which tool was called.
+
+On `failed`: `{"status": "failed", "tool": <role>, "error": "..."}`.
+
+**The new `job_status` tool** is registered alongside the four role tools.
+It is the only tool in `TOOLS_REGISTRY` whose role is infrastructure
+rather than a worker persona — flagged in its description so the
+orchestrator doesn't dispatch it for substantive work.
+
+**Out of scope** for v0.0.3:
+- Job cancellation. Caller can stop polling; worker continues to completion.
+- Result TTL / GC. Old completed jobs accumulate. Acceptable because
+  bootstrap server restarts daily-ish during dev.
+- Multi-orchestrator coordination. v0.0.3 is single-client.
+
 ### Renaming `cheap_code_gen` → `coder`
 
 13 files reference `cheap_code_gen` as of design time. All textual

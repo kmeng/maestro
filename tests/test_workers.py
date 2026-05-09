@@ -44,8 +44,11 @@ def server():
 # ============================================================
 
 
-def test_tools_registry_contains_all_four_roles(server):
-    assert set(server.TOOLS_REGISTRY.keys()) == {"coder", "librarian", "reviewer", "scribe"}
+def test_tools_registry_contains_four_roles_plus_job_status(server):
+    """Four worker roles plus the job_status infrastructure tool (ADR-0009)."""
+    assert set(server.TOOLS_REGISTRY.keys()) == {
+        "coder", "librarian", "reviewer", "scribe", "job_status",
+    }
 
 
 def test_coder_tool_has_required_input_fields(server):
@@ -164,7 +167,7 @@ def _parse_error(result):
 
 
 def test_librarian_rejects_when_neither_input_provided(server):
-    result = asyncio.run(server.librarian_handler({"query": "anything"}))
+    result = asyncio.run(server._librarian_impl({"query": "anything"}))
     err = _parse_error(result)
     assert err["error"] == "input_validation"
     assert "exactly one" in err["message"]
@@ -174,7 +177,7 @@ def test_librarian_rejects_when_both_inputs_provided(server, tmp_path):
     f = tmp_path / "doc.md"
     f.write_text("hello", encoding="utf-8")
     result = asyncio.run(
-        server.librarian_handler(
+        server._librarian_impl(
             {"file_path": str(f), "document_text": "hello", "query": "x"}
         )
     )
@@ -183,7 +186,7 @@ def test_librarian_rejects_when_both_inputs_provided(server, tmp_path):
 
 
 def test_librarian_rejects_missing_query(server):
-    result = asyncio.run(server.librarian_handler({"document_text": "hi"}))
+    result = asyncio.run(server._librarian_impl({"document_text": "hi"}))
     err = _parse_error(result)
     assert err["error"] == "input_validation"
     assert "query" in err["message"]
@@ -192,7 +195,7 @@ def test_librarian_rejects_missing_query(server):
 def test_librarian_rejects_missing_file(server, tmp_path):
     missing = tmp_path / "nope.md"
     result = asyncio.run(
-        server.librarian_handler({"file_path": str(missing), "query": "x"})
+        server._librarian_impl({"file_path": str(missing), "query": "x"})
     )
     err = _parse_error(result)
     assert err["error"] == "file_not_found"
@@ -201,7 +204,7 @@ def test_librarian_rejects_missing_file(server, tmp_path):
 def test_librarian_rejects_oversize_document(server):
     huge = "x" * 100_000  # exceeds default MAX_DOCUMENT_CHARS = 80000
     result = asyncio.run(
-        server.librarian_handler({"document_text": huge, "query": "x"})
+        server._librarian_impl({"document_text": huge, "query": "x"})
     )
     err = _parse_error(result)
     assert err["error"] == "document_too_large"
@@ -237,7 +240,7 @@ def test_librarian_happy_path_with_inline_text(server, monkeypatch):
     monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
 
     result = asyncio.run(
-        server.librarian_handler({"document_text": document, "query": "find Y"})
+        server._librarian_impl({"document_text": document, "query": "find Y"})
     )
     assert len(result) == 1
     parsed = json.loads(result[0].text)
@@ -267,7 +270,7 @@ def test_librarian_resolves_relative_path_against_project_root(server, monkeypat
 
     # README.md is committed at the repo root and exists under any clone.
     result = asyncio.run(
-        server.librarian_handler({"file_path": "README.md", "query": "x"})
+        server._librarian_impl({"file_path": "README.md", "query": "x"})
     )
     # Should NOT be a file_not_found error.
     parsed = json.loads(result[0].text)
@@ -291,7 +294,7 @@ def test_librarian_reads_file_and_passes_content_to_model(server, monkeypatch, t
     mock_create = AsyncMock(return_value=_mock_deepseek_response(json.dumps(valid_output)))
     monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
 
-    asyncio.run(server.librarian_handler({"file_path": str(doc), "query": "find 42"}))
+    asyncio.run(server._librarian_impl({"file_path": str(doc), "query": "find 42"}))
 
     # The user message to the model should contain the file's content.
     user_msg = mock_create.call_args.kwargs["messages"][1]["content"]
@@ -303,7 +306,7 @@ def test_librarian_returns_error_when_model_response_is_not_json(server, monkeyp
     monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
 
     result = asyncio.run(
-        server.librarian_handler({"document_text": "x", "query": "x"})
+        server._librarian_impl({"document_text": "x", "query": "x"})
     )
     err = _parse_error(result)
     assert err["error"] == "output_not_json"
@@ -315,7 +318,7 @@ def test_librarian_returns_error_when_output_schema_invalid(server, monkeypatch)
     monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
 
     result = asyncio.run(
-        server.librarian_handler({"document_text": "x", "query": "x"})
+        server._librarian_impl({"document_text": "x", "query": "x"})
     )
     err = _parse_error(result)
     assert err["error"] == "output_schema_invalid"
@@ -327,7 +330,7 @@ def test_librarian_returns_error_on_api_exception(server, monkeypatch):
 
     monkeypatch.setattr(server.deepseek.chat.completions, "create", boom)
     result = asyncio.run(
-        server.librarian_handler({"document_text": "x", "query": "x"})
+        server._librarian_impl({"document_text": "x", "query": "x"})
     )
     err = _parse_error(result)
     assert err["error"] == "model_api_error"
@@ -463,7 +466,7 @@ def test_librarian_drops_non_verbatim_and_reports_in_concerns(server, monkeypatc
     monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
 
     result = asyncio.run(
-        server.librarian_handler({"document_text": source_doc, "query": "extract things"})
+        server._librarian_impl({"document_text": source_doc, "query": "extract things"})
     )
     parsed = json.loads(result[0].text)
 
@@ -527,7 +530,7 @@ def test_validate_reviewer_rejects_finding_missing_location(server):
 
 
 def test_reviewer_rejects_missing_inputs(server):
-    result = asyncio.run(server.reviewer_handler({"spec": "x"}))
+    result = asyncio.run(server._reviewer_impl({"spec": "x"}))
     err = _parse_error(result)
     assert err["error"] == "input_validation"
 
@@ -544,7 +547,7 @@ def test_reviewer_happy_path_uses_pro(server, monkeypatch):
     monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
 
     result = asyncio.run(
-        server.reviewer_handler({"spec": "do X", "code": "def x(): pass", "language": "python"})
+        server._reviewer_impl({"spec": "do X", "code": "def x(): pass", "language": "python"})
     )
     parsed = json.loads(result[0].text)
     assert parsed == valid_output
@@ -557,7 +560,7 @@ def test_reviewer_returns_error_when_output_schema_invalid(server, monkeypatch):
     monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
 
     result = asyncio.run(
-        server.reviewer_handler({"spec": "x", "code": "y", "language": "python"})
+        server._reviewer_impl({"spec": "x", "code": "y", "language": "python"})
     )
     err = _parse_error(result)
     assert err["error"] == "output_schema_invalid"
@@ -601,7 +604,7 @@ def test_validate_scribe_rejects_non_string_pr_body(server):
 
 
 def test_scribe_rejects_missing_diff(server):
-    result = asyncio.run(server.scribe_handler({
+    result = asyncio.run(server._scribe_impl({
         "issue_number": 1,
         "issue_title": "x",
         "issue_body": "y",
@@ -613,7 +616,7 @@ def test_scribe_rejects_missing_diff(server):
 
 
 def test_scribe_rejects_non_integer_issue_number(server):
-    result = asyncio.run(server.scribe_handler({
+    result = asyncio.run(server._scribe_impl({
         "diff": "x",
         "issue_number": "1",  # string instead of int
         "issue_title": "x",
@@ -636,7 +639,7 @@ def test_scribe_happy_path_uses_flash(server, monkeypatch):
     mock_create = AsyncMock(return_value=_mock_deepseek_response(json.dumps(valid_output)))
     monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
 
-    result = asyncio.run(server.scribe_handler({
+    result = asyncio.run(server._scribe_impl({
         "diff": "+ added Y",
         "issue_number": 1,
         "issue_title": "Add Y",
@@ -654,12 +657,12 @@ def test_scribe_happy_path_uses_flash(server, monkeypatch):
 
 
 def test_coder_rejects_missing_spec(server):
-    result = asyncio.run(server.coder_handler({"language": "python"}))
+    result = asyncio.run(server._coder_impl({"language": "python"}))
     assert "spec" in result[0].text and "required" in result[0].text
 
 
 def test_coder_rejects_missing_language(server):
-    result = asyncio.run(server.coder_handler({"spec": "do X"}))
+    result = asyncio.run(server._coder_impl({"spec": "do X"}))
     assert "language" in result[0].text and "required" in result[0].text
 
 
@@ -668,10 +671,97 @@ def test_coder_uses_model_pro(server, monkeypatch):
     mock_create = AsyncMock(return_value=_mock_deepseek_response("<output>code</output>"))
     monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
 
-    asyncio.run(server.coder_handler({"spec": "trivial", "language": "python"}))
+    asyncio.run(server._coder_impl({"spec": "trivial", "language": "python"}))
 
     assert mock_create.call_args.kwargs["model"] == server.MODEL_PRO
     assert server.MODEL_PRO == "deepseek-v4-pro"
+
+
+# ============================================================
+# Async dispatch infrastructure (ADR-0009)
+#
+# Each role's public handler now enqueues a background task and returns
+# a job_id immediately; the impl runs out-of-band; the orchestrator
+# polls `job_status_handler` until terminal.
+# ============================================================
+
+
+async def _wait_for_job_terminal(server, job_id: str, max_iters: int = 200) -> None:
+    """Poll the in-memory job dict until the job reaches done/failed."""
+    for _ in range(max_iters):
+        if server._jobs[job_id].status != "running":
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError(f"job {job_id} did not terminate within {max_iters} iters")
+
+
+def test_handler_returns_job_id_immediately(server, monkeypatch):
+    """coder_handler returns a job_id immediately, not the underlying result."""
+    mock_create = AsyncMock(return_value=_mock_deepseek_response("done"))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    async def run():
+        result = await server.coder_handler({"spec": "x", "language": "python"})
+        payload = json.loads(result[0].text)
+        assert "job_id" in payload
+        # Wait for completion so we don't leak the background task.
+        await _wait_for_job_terminal(server, payload["job_id"])
+        return payload["job_id"]
+
+    job_id = asyncio.run(run())
+    assert job_id in server._jobs
+    assert server._jobs[job_id].tool == "coder"
+
+
+def test_job_status_transitions_running_to_done(server, monkeypatch):
+    """job_status reflects the background task's terminal state with result_text."""
+    mock_create = AsyncMock(return_value=_mock_deepseek_response("done"))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    async def run():
+        enqueue = await server.coder_handler({"spec": "x", "language": "python"})
+        job_id = json.loads(enqueue[0].text)["job_id"]
+        await _wait_for_job_terminal(server, job_id)
+        status = await server.job_status_handler({"job_id": job_id})
+        return json.loads(status[0].text)
+
+    payload = asyncio.run(run())
+    assert payload["status"] == "done"
+    assert payload["tool"] == "coder"
+    assert "result_text" in payload
+    # Coder's result_text starts with the dispatch banner.
+    assert payload["result_text"].startswith("[coder dispatch")
+
+
+def test_job_status_returns_failed_when_impl_raises(server):
+    """An unhandled exception inside the impl surfaces as failed status."""
+    async def boom():
+        raise RuntimeError("simulated impl crash")
+
+    async def run():
+        record = server.JobRecord(job_id="manual-test", tool="coder", status="running")
+        server._jobs["manual-test"] = record
+        await server._run_in_background(record, boom())
+        status = await server.job_status_handler({"job_id": "manual-test"})
+        return json.loads(status[0].text)
+
+    payload = asyncio.run(run())
+    assert payload["status"] == "failed"
+    assert "RuntimeError" in payload["error"]
+    assert "simulated impl crash" in payload["error"]
+
+
+def test_job_status_returns_error_for_unknown_job(server):
+    """Polling an unknown id returns a structured error envelope."""
+    result = asyncio.run(server.job_status_handler({"job_id": "no-such-job"}))
+    err = _parse_error(result)
+    assert err["error"] == "job_not_found"
+
+
+def test_job_status_rejects_missing_job_id(server):
+    result = asyncio.run(server.job_status_handler({}))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
 
 
 # ============================================================
