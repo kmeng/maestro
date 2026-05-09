@@ -78,6 +78,27 @@ malformed JSON.
 is a contract violation and is grounds for the orchestrator to reject
 the response and refine the role's system prompt.
 
+**Verbatim verification** (added 2026-05-09 after T5.1 real-world
+testing). The system prompt alone does not enforce verbatim contracts:
+v4-flash was observed to strip markdown emphasis (`**X**` → `X`) and
+silently paraphrase quotes despite explicit prompt rules. Any role
+declaring a verbatim contract on a field MUST have its handler verify
+quotes against the source before returning. Convention:
+
+- Verification compares quote-vs-source after normalizing whitespace
+  (line wraps and indentation collapse to single spaces). This avoids
+  false rejection when the worker re-flows paragraph content. All
+  other characters — markdown emphasis, punctuation, exact wording —
+  must match.
+- Non-verbatim entries are **dropped** from the field — they never
+  reach the caller.
+- The handler appends a summary note plus per-entry violation lines
+  to the response's `concerns` field so the caller can see what was
+  dropped.
+
+The verifier is the contract enforcer; the system prompt is the
+expectation-setter. Both are needed, neither is sufficient alone.
+
 ### Worker file access (token-economy principle)
 
 Workers MAY read files from the local filesystem when the input the

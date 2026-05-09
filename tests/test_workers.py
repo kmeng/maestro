@@ -225,6 +225,8 @@ def _mock_deepseek_response(content: str):
 
 
 def test_librarian_happy_path_with_inline_text(server, monkeypatch):
+    """Verbatim quotes survive the verifier and reach the caller intact."""
+    document = "the system must Y in all cases"
     valid_output = {
         "hard_constraints": [{"quote": "must Y", "section": "§A"}],
         "summary": "summary text",
@@ -235,7 +237,7 @@ def test_librarian_happy_path_with_inline_text(server, monkeypatch):
     monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
 
     result = asyncio.run(
-        server.librarian_handler({"document_text": "doc body", "query": "find Y"})
+        server.librarian_handler({"document_text": document, "query": "find Y"})
     )
     assert len(result) == 1
     parsed = json.loads(result[0].text)
@@ -304,6 +306,101 @@ def test_librarian_returns_error_on_api_exception(server, monkeypatch):
     )
     err = _parse_error(result)
     assert err["error"] == "model_api_error"
+
+
+# ============================================================
+# _verify_verbatim_quotes — verbatim contract enforcement
+# ============================================================
+
+
+def test_verify_accepts_exact_match(server):
+    source = "the quick brown fox jumps over the lazy dog"
+    quotes = [{"quote": "quick brown fox", "section": "§1"}]
+    kept, violations = server._verify_verbatim_quotes(quotes, source)
+    assert len(kept) == 1
+    assert violations == []
+
+
+def test_verify_accepts_whitespace_normalized_match(server):
+    """Line wraps in source vs single-line quote should still match."""
+    source = "the quick brown fox\n  jumps over the lazy dog"
+    quotes = [{"quote": "quick brown fox jumps over", "section": "§1"}]
+    kept, violations = server._verify_verbatim_quotes(quotes, source)
+    assert len(kept) == 1
+    assert violations == []
+
+
+def test_verify_rejects_markdown_stripped(server):
+    """The exact failure mode from T5.1 real-world test: dropping **bold**."""
+    source = "**Role-keyed map** enforces 1 role : 1 member"
+    quotes = [{"quote": "Role-keyed map enforces 1 role : 1 member", "section": "§1"}]
+    kept, violations = server._verify_verbatim_quotes(quotes, source)
+    assert kept == []
+    assert len(violations) == 1
+    assert "not verbatim" in violations[0]
+    assert "§1" in violations[0]
+
+
+def test_verify_rejects_paraphrase(server):
+    """Adding punctuation or dropping a leading word is a contract violation."""
+    source = "plus a DEFAULT_MODELS constant sourced from architecture.md"
+    quotes = [{"quote": "DEFAULT_MODELS constant sourced from architecture.md.", "section": "§T1.1"}]
+    kept, violations = server._verify_verbatim_quotes(quotes, source)
+    assert kept == []
+    assert len(violations) == 1
+
+
+def test_verify_rejects_empty_quote(server):
+    source = "any source"
+    quotes = [{"quote": "", "section": "§1"}]
+    kept, violations = server._verify_verbatim_quotes(quotes, source)
+    assert kept == []
+    assert len(violations) == 1
+
+
+def test_verify_mixes_pass_and_fail(server):
+    source = "**A** is bold and B is plain"
+    quotes = [
+        {"quote": "B is plain", "section": "§1"},      # pass
+        {"quote": "A is bold", "section": "§2"},       # fail (dropped **)
+        {"quote": "**A** is bold", "section": "§3"},   # pass (preserved markdown)
+    ]
+    kept, violations = server._verify_verbatim_quotes(quotes, source)
+    assert len(kept) == 2
+    assert kept[0]["section"] == "§1"
+    assert kept[1]["section"] == "§3"
+    assert len(violations) == 1
+    assert "§2" in violations[0]
+
+
+def test_librarian_drops_non_verbatim_and_reports_in_concerns(server, monkeypatch):
+    """End-to-end: handler runs verifier and reports dropped quotes."""
+    source_doc = "**Bold X** is a thing.\nA second statement appears here."
+    output = {
+        "hard_constraints": [
+            {"quote": "Bold X is a thing.", "section": "§A"},   # fail
+            {"quote": "A second statement appears here.", "section": "§B"},  # pass
+        ],
+        "summary": "two things",
+        "recommend_full_read": [],
+        "concerns": ["original concern"],
+    }
+    mock_create = AsyncMock(return_value=_mock_deepseek_response(json.dumps(output)))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    result = asyncio.run(
+        server.librarian_handler({"document_text": source_doc, "query": "extract things"})
+    )
+    parsed = json.loads(result[0].text)
+
+    # Only the verbatim quote survived.
+    assert len(parsed["hard_constraints"]) == 1
+    assert parsed["hard_constraints"][0]["section"] == "§B"
+
+    # Concerns has a summary note + the violation line + original concern.
+    assert any("dropped 1 non-verbatim" in c for c in parsed["concerns"])
+    assert any("§A" in c for c in parsed["concerns"])
+    assert "original concern" in parsed["concerns"]
 
 
 # ============================================================
