@@ -143,6 +143,40 @@ def log_dispatch(record: dict) -> None:
 # Shared helpers used by multiple roles
 # ============================================================
 
+
+def _build_banner(tool: str, model: str, duration: float, total_tokens: int) -> str:
+    """Single source of truth for the dispatch banner shape.
+
+    Coder prefixes this string onto its plaintext result_text. The three
+    JSON workers (librarian / reviewer / scribe) embed the same string
+    as the value of a `_banner` field inside their JSON output — placing
+    a string before JSON would break json.loads() for every consumer.
+    Shape parity is preserved; placement varies by output type.
+    """
+    return f"[{tool} dispatch — {model} — {duration}s — {total_tokens} tokens]"
+
+
+def extract_banner(result_text: str) -> Optional[str]:
+    """Retrieve the dispatch banner from result_text regardless of placement.
+
+    Plaintext outputs (coder) carry the banner as a prefix; JSON outputs
+    carry it inside a `_banner` field. Returns None if no banner is
+    present (e.g. error-path responses, which intentionally have none —
+    a banner with total_tokens=None would lie).
+    """
+    if result_text.startswith("["):
+        return result_text.split("\n", 1)[0]
+    try:
+        obj = json.loads(result_text)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if isinstance(obj, dict):
+        banner = obj.get("_banner")
+        if isinstance(banner, str):
+            return banner
+    return None
+
+
 def _error_response(code: str, message: str, **extra: Any) -> list[TextContent]:
     """Build a JSON error response shared across roles.
 
@@ -391,12 +425,10 @@ async def _coder_impl(arguments: dict) -> list[TextContent]:
             )
         )]
 
+    banner = _build_banner("coder", MODEL_PRO, duration, usage["total_tokens"])
     return [TextContent(
         type="text",
-        text=(
-            f"[coder dispatch — {MODEL_PRO} — {duration}s — "
-            f"{usage['total_tokens']} tokens]\n\n{response_text}"
-        )
+        text=f"{banner}\n\n{response_text}",
     )]
 
 
@@ -736,6 +768,9 @@ async def _librarian_impl(arguments: dict) -> list[TextContent]:
             [summary_note] + list(parsed.get("concerns", [])) + violations
         )
 
+    parsed["_banner"] = _build_banner(
+        "librarian", MODEL_FLASH, duration, usage["total_tokens"]
+    )
     return [TextContent(
         type="text",
         text=json.dumps(parsed, ensure_ascii=False, indent=2),
@@ -952,6 +987,9 @@ async def _reviewer_impl(arguments: dict) -> list[TextContent]:
     if validation_error:
         return _error_response("output_schema_invalid", validation_error, raw=parsed)
 
+    parsed["_banner"] = _build_banner(
+        "reviewer", MODEL_PRO, duration, usage["total_tokens"]
+    )
     return [TextContent(
         type="text",
         text=json.dumps(parsed, ensure_ascii=False, indent=2),
@@ -1157,6 +1195,9 @@ async def _scribe_impl(arguments: dict) -> list[TextContent]:
     if validation_error:
         return _error_response("output_schema_invalid", validation_error, raw=parsed)
 
+    parsed["_banner"] = _build_banner(
+        "scribe", MODEL_FLASH, duration, usage["total_tokens"]
+    )
     return [TextContent(
         type="text",
         text=json.dumps(parsed, ensure_ascii=False, indent=2),
