@@ -44,8 +44,8 @@ def server():
 # ============================================================
 
 
-def test_tools_registry_contains_coder_and_librarian(server):
-    assert set(server.TOOLS_REGISTRY.keys()) == {"coder", "librarian"}
+def test_tools_registry_contains_all_four_roles(server):
+    assert set(server.TOOLS_REGISTRY.keys()) == {"coder", "librarian", "reviewer", "scribe"}
 
 
 def test_coder_tool_has_required_input_fields(server):
@@ -475,6 +475,177 @@ def test_librarian_drops_non_verbatim_and_reports_in_concerns(server, monkeypatc
     assert any("dropped 1 non-verbatim" in c for c in parsed["concerns"])
     assert any("§A" in c for c in parsed["concerns"])
     assert "original concern" in parsed["concerns"]
+
+
+# ============================================================
+# reviewer
+# ============================================================
+
+
+def test_reviewer_tool_required_fields(server):
+    assert set(server.REVIEWER_TOOL.inputSchema["required"]) == {"spec", "code", "language"}
+
+
+def test_validate_reviewer_accepts_valid(server):
+    valid = {
+        "verdict": "pass",
+        "findings": [
+            {"severity": "low", "location": "fn foo", "description": "minor"},
+        ],
+        "missed_requirements": [],
+        "concerns": [],
+    }
+    assert server._validate_reviewer_output(valid) is None
+
+
+def test_validate_reviewer_rejects_unknown_verdict(server):
+    bad = {"verdict": "approved", "findings": [], "missed_requirements": [], "concerns": []}
+    err = server._validate_reviewer_output(bad)
+    assert err is not None and "verdict" in err
+
+
+def test_validate_reviewer_rejects_unknown_severity(server):
+    bad = {
+        "verdict": "concerns",
+        "findings": [{"severity": "critical", "location": "x", "description": "y"}],
+        "missed_requirements": [],
+        "concerns": [],
+    }
+    err = server._validate_reviewer_output(bad)
+    assert err is not None and "severity" in err
+
+
+def test_validate_reviewer_rejects_finding_missing_location(server):
+    bad = {
+        "verdict": "fail",
+        "findings": [{"severity": "high", "description": "y"}],
+        "missed_requirements": [],
+        "concerns": [],
+    }
+    err = server._validate_reviewer_output(bad)
+    assert "location" in err
+
+
+def test_reviewer_rejects_missing_inputs(server):
+    result = asyncio.run(server.reviewer_handler({"spec": "x"}))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+
+
+def test_reviewer_happy_path_uses_pro(server, monkeypatch):
+    """Reviewer is judgment-heavy and must dispatch to MODEL_PRO."""
+    valid_output = {
+        "verdict": "pass",
+        "findings": [],
+        "missed_requirements": [],
+        "concerns": [],
+    }
+    mock_create = AsyncMock(return_value=_mock_deepseek_response(json.dumps(valid_output)))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    result = asyncio.run(
+        server.reviewer_handler({"spec": "do X", "code": "def x(): pass", "language": "python"})
+    )
+    parsed = json.loads(result[0].text)
+    assert parsed == valid_output
+    assert mock_create.call_args.kwargs["model"] == server.MODEL_PRO
+
+
+def test_reviewer_returns_error_when_output_schema_invalid(server, monkeypatch):
+    bad_output = {"verdict": "yes", "findings": [], "missed_requirements": [], "concerns": []}
+    mock_create = AsyncMock(return_value=_mock_deepseek_response(json.dumps(bad_output)))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    result = asyncio.run(
+        server.reviewer_handler({"spec": "x", "code": "y", "language": "python"})
+    )
+    err = _parse_error(result)
+    assert err["error"] == "output_schema_invalid"
+
+
+# ============================================================
+# scribe
+# ============================================================
+
+
+def test_scribe_tool_required_fields(server):
+    assert set(server.SCRIBE_TOOL.inputSchema["required"]) == {
+        "diff",
+        "issue_number",
+        "issue_title",
+        "issue_body",
+        "convention",
+    }
+
+
+def test_validate_scribe_accepts_valid(server):
+    valid = {
+        "commit_message": "feat: add X",
+        "pr_title": "Add X",
+        "pr_body": "## Summary\nAdds X.",
+        "concerns": [],
+    }
+    assert server._validate_scribe_output(valid) is None
+
+
+def test_validate_scribe_rejects_empty_commit_message(server):
+    bad = {"commit_message": "", "pr_title": "X", "pr_body": "", "concerns": []}
+    err = server._validate_scribe_output(bad)
+    assert "commit_message" in err
+
+
+def test_validate_scribe_rejects_non_string_pr_body(server):
+    bad = {"commit_message": "x", "pr_title": "y", "pr_body": 42, "concerns": []}
+    err = server._validate_scribe_output(bad)
+    assert "pr_body" in err
+
+
+def test_scribe_rejects_missing_diff(server):
+    result = asyncio.run(server.scribe_handler({
+        "issue_number": 1,
+        "issue_title": "x",
+        "issue_body": "y",
+        "convention": "z",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "diff" in err["message"]
+
+
+def test_scribe_rejects_non_integer_issue_number(server):
+    result = asyncio.run(server.scribe_handler({
+        "diff": "x",
+        "issue_number": "1",  # string instead of int
+        "issue_title": "x",
+        "issue_body": "",
+        "convention": "x",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "issue_number" in err["message"]
+
+
+def test_scribe_happy_path_uses_flash(server, monkeypatch):
+    """Scribe is routine drafting — flash is sufficient."""
+    valid_output = {
+        "commit_message": "feat(#1): add Y",
+        "pr_title": "Add Y",
+        "pr_body": "Adds Y.",
+        "concerns": [],
+    }
+    mock_create = AsyncMock(return_value=_mock_deepseek_response(json.dumps(valid_output)))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    result = asyncio.run(server.scribe_handler({
+        "diff": "+ added Y",
+        "issue_number": 1,
+        "issue_title": "Add Y",
+        "issue_body": "We need Y.",
+        "convention": "Conventional Commits.",
+    }))
+    parsed = json.loads(result[0].text)
+    assert parsed == valid_output
+    assert mock_create.call_args.kwargs["model"] == server.MODEL_FLASH
 
 
 # ============================================================
