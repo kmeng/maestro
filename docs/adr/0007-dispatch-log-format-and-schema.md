@@ -7,8 +7,8 @@
 ## Context
 
 Epic 3 introduces dispatch observability — a log of every worker
-invocation that the MCP server makes (today: `cheap_code_gen` only;
-post-v0.0.3: more workers). The log is consumed by the Web UI for the
+invocation that the MCP server makes (initially: `coder` and
+`librarian`; post-v0.0.3: more workers). The log is consumed by the Web UI for the
 history view, the live execution-flow view, and the problem panel.
 
 Three concerns drive this ADR:
@@ -239,7 +239,7 @@ offset to 0.
   the active file small. If history grows beyond JSONL's comfort,
   v0.x.0 can index by introducing a sidecar SQLite cache without
   changing the on-disk truth.
-- **4 KB per-event cap is restrictive.** A `cheap_code_gen` invocation
+- **4 KB per-event cap is restrictive.** A `coder` invocation
   with a long prompt or a long response will be truncated for
   logging. Mitigation: D3 specifies truncation as "first/last N chars
   with an ellipsis"; the full payload is still seen by Claude Code at

@@ -53,7 +53,7 @@ At the start of every fresh Claude Code session, before responding to the user's
 - Bullet list of process / workflow lessons. If terse, add to project memory; if detailed enough to deserve a permanent home, also lift into `docs/governance.md` or `CLAUDE.md` via a dedicated PR.
 
 **Costs** (optional — when dogfooding starts)
-- Token counts and dollar spend for any `cheap_code_gen` dispatches.
+- Token counts and dollar spend for any `coder` dispatches.
 ```
 
 If a single calendar day has multiple sessions (rare), append additional `## Session 2 — ...` blocks to the same date's file. Do not split a single day across multiple files.

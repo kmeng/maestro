@@ -5,7 +5,7 @@ extended using itself.
 
 ## What's here
 
-- **`maestro_server.py`** — A single-file MCP server exposing one tool: `cheap_code_gen`. Routes to DeepSeek-Coder.
+- **`maestro_server.py`** — A single-file MCP server. As of v0.0.3 it exposes two tools: `coder` (code generation, routes to DeepSeek-v4-pro) and `librarian` (long-document extraction, routes to DeepSeek-v4-flash).
 - **`requirements.txt`** — Python deps.
 - **`../.env.example`** (at repo root) — template for your local `.env` config.
 
@@ -81,22 +81,22 @@ After saving the config, **fully quit Claude Desktop and restart it** (Cmd+Q on 
 
 ### 5. Verify in your client
 
-In Claude Code, run `/mcp` — you should see `maestro` listed as connected, with one tool: `cheap_code_gen`.
+In Claude Code, run `/mcp` — you should see `maestro` listed as connected, with two tools: `coder` and `librarian`.
 
-In Claude Desktop, the running tools are visible in the conversation UI; ask "what tools do you have?" or look at the tool icon, and you should see `cheap_code_gen` available.
+In Claude Desktop, the running tools are visible in the conversation UI; ask "what tools do you have?" or look at the tool icon, and you should see `coder` and `librarian` available.
 
 ## First test dispatch
 
 In your client, try this prompt:
 
 ```
-Use the maestro cheap_code_gen tool to generate a Python function
+Use the maestro coder tool to generate a Python function
 that takes a list of integers and returns a dict mapping each integer
 to its square.
 ```
 
 The orchestrating model should call the tool. You'll see:
-- The dispatch line: `[junior_engineer dispatch — deepseek-coder — 2.4s — 187 tokens]`
+- The dispatch line: `[coder dispatch — deepseek-v4-pro — 2.4s — 187 tokens]`
 - A `<reasoning>` block explaining what DeepSeek understood
 - An `<output>` block with the actual code
 - A `<concerns>` block (probably "none" for something this simple)
@@ -126,7 +126,7 @@ You should see the full record: input, output, tokens, duration.
 - Verify the key in `.env` is correct: `grep DEEPSEEK_API_KEY .env` (from repo root)
 
 **Orchestrating model doesn't call the tool:**
-- This is normal at first. Try being explicit: "Use the cheap_code_gen tool to..."
+- This is normal at first. Try being explicit: "Use the coder tool to..."
 - Once it works once, it tends to use the tool more readily for similar tasks
 - Tweak the tool description in `maestro_server.py` if it consistently ignores it
 
@@ -134,9 +134,9 @@ You should see the full record: input, output, tokens, duration.
 
 This is the moment Maestro becomes self-hosting. Your next feature should be developed using Maestro itself:
 
-1. Pick the next tool to add (suggested: `cheap_explain` for summarization)
+1. Pick the next tool to add (v0.0.3 added `librarian`; future candidates include `reviewer`, `scribe`)
 2. In your client, prompt the orchestrating model to design it
-3. Have the orchestrator call `cheap_code_gen` to write the implementation
+3. Have the orchestrator call `coder` to write the implementation
 4. Review, integrate, test
 5. **Commit with AI authorship attribution** — see `BUILD_LOG.md` template
 

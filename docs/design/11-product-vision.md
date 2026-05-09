@@ -30,7 +30,7 @@ during a session.
 - Hosted / multi-user / cloud deployment. Maestro v0.0.3 is single-user
   local.
 - Replacing the MCP server. The HTTP / Web UI surface is additive. The
-  existing `cheap_code_gen` call path is non-negotiable and must not regress.
+  existing `coder` call path is non-negotiable and must not regress.
 - Touching protected docs (README.md, CLAUDE.md, docs/governance.md,
   docs/architecture.md, existing ADRs). When v0.0.3's user surface lands, a
   README rewrite will be needed — that's a future, separate issue.
@@ -143,7 +143,7 @@ For the v0.0.3 release as a whole (not for this draft):
   to one of their existing git repos via the Web UI.
 - During a Claude Code session that uses Maestro's MCP server, the user can
   watch dispatches happen in the Web UI in something close to real time.
-- The MCP `cheap_code_gen` path works exactly as it does in v0.0.2 — same
+- The MCP `coder` path works exactly as it does in v0.0.2 — same
   call signature, same behavior. No regression.
 - README.md, CLAUDE.md, governance.md, architecture.md, and existing ADRs
   are unchanged at the moment v0.0.3 ships (any required updates come in

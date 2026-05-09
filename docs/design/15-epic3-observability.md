@@ -13,7 +13,7 @@
 
 ## Problem
 
-When Maestro dispatches a task to `cheap_code_gen` (or future workers),
+When Maestro dispatches a task to `coder` (or future workers),
 the user has no visibility into what was sent, what came back, or where
 things went wrong. Today the only signal is "Claude Code mentioned it
 called the tool" — buried in transcript, no structure. For Maestro to be
@@ -26,7 +26,7 @@ trustworthy as a coordination layer, the user needs to see:
   invocations, and human-in-the-loop questions.
 
 Epic 3 is also the v0.0.3 epic that delivers on the dogfooding promise of
-v0.0.2: until Maestro itself routinely uses `cheap_code_gen` and the user
+v0.0.2: until Maestro itself routinely uses `coder` and the user
 can see it doing so, the whole project remains a thesis rather than a
 demonstration.
 
@@ -335,7 +335,7 @@ Every MCP tool that worker-dispatches goes through one shared
 function: `dispatcher.run()`. The MCP tool itself stays thin:
 
 ```python
-def cheap_code_gen(prompt: str) -> str:
+def coder(prompt: str) -> str:
     return dispatcher.run(
         role=RoleId.JUNIOR,
         input=prompt,
@@ -392,7 +392,7 @@ def emit_event(event: DispatchEvent) -> None:
 
 The dispatch returns its real result to Claude Code as if logging
 hadn't happened. Observability degrades gracefully — the user sees
-nothing in the Web UI for that dispatch but `cheap_code_gen` still
+nothing in the Web UI for that dispatch but `coder` still
 worked. Stderr surfaces the error to whoever is watching the MCP
 server's log.
 
@@ -406,7 +406,7 @@ present but has gaps" and surfaces it. v0.0.3 ships without that.
 - `maestro/dispatcher.py` — `dispatcher.run()`. Imports from
   `dispatch_log` and from `team` (Epic 1's models for the
   `team.yaml` resolution).
-- `maestro/server.py` — existing MCP entry point. `cheap_code_gen`
+- `maestro/server.py` — existing MCP entry point. `coder`
   becomes a thin wrapper that delegates to `dispatcher.run()`. Other
   tools added in future releases follow the same pattern.
 
@@ -452,7 +452,7 @@ the dispatcher.
 - [ ] **T3.2** — `emit_event` writer in `maestro/dispatch_log/writer.py`: serialize, truncate per D3, append via `os.open`+`os.write`, OSError → stderr fallback. Rotation: size check before write, rename + reopen at 5 MB. No-op import from MCP server startup so the module is exercised. (~2h)
 - [ ] **T3.3** — Reader in `maestro/dispatch_log/reader.py`: one-shot file scan + tail-mode generator. `(inode, offset)` tracking; reopens on inode change. (~1.5h)
 - [ ] **T3.4** — `dispatcher.run(role, input, executor)` in `maestro/dispatcher.py`: ULID `request_id`, model resolution per [Epic 1 D4](13-epic1-team-composition.md#failure-modes-file-level----mcp-server-fallback-semantics), event flow, exception → `dispatch.failed`. (~1.5h)
-- [ ] **T3.5** — Refactor `cheap_code_gen` in `maestro/server.py` to a thin wrapper over `dispatcher.run()`. Replaces Epic 1 T1.6's inline implementation. v0.0.2 fallback behavior preserved exactly. (~1h)
+- [ ] **T3.5** — Refactor `coder` in `maestro/server.py` to a thin wrapper over `dispatcher.run()`. Replaces Epic 1 T1.6's inline implementation. v0.0.2 fallback behavior preserved exactly. (~1h)
 - [ ] **T3.6** — SSE endpoint `GET /api/dispatch_log/stream` in the Web UI: FastAPI `EventSourceResponse` wrapping the tail-reader. `Last-Event-ID` resume with `(inode, offset)` keys. (~1h)
 - [ ] **T3.7** — History view UI: scan + fold-by-`request_id`, drill-down on click. Chinese labels per D6. (~1.5h)
 - [ ] **T3.8** — Live view UI: htmx `hx-sse`, Running/Completed zones, elapsed-time tick, badge annotations from `fallback.config_absent` events. Chinese labels. (~2h)
@@ -464,7 +464,7 @@ UI surfaces sharing the same backend).
 
 ## Acceptance criteria
 
-- A `cheap_code_gen` invocation produces visible dispatch log entries:
+- A `coder` invocation produces visible dispatch log entries:
   start, end (success or failure).
 - The history view in the Web UI shows past invocations in
   reverse-chronological order with the documented fields.
@@ -474,7 +474,7 @@ UI surfaces sharing the same backend).
   the user to know what failed.
 - Logging failures (e.g., disk full) do not break dispatch — the
   invocation still returns its result to Claude Code.
-- The MCP `cheap_code_gen` interface as seen by Claude Code is unchanged.
+- The MCP `coder` interface as seen by Claude Code is unchanged.
   Instrumentation is internal.
 
 ## Open questions
@@ -482,7 +482,7 @@ UI surfaces sharing the same backend).
 - ~~**OPEN-3.1.** Log storage: JSONL vs SQLite.~~ **Resolved**: JSONL at `<project-root>/.maestro/logs/dispatch.jsonl`, append-only, line-level atomic via `O_APPEND`. See [ADR-0007](../adr/0007-dispatch-log-format-and-schema.md).
 - ~~**OPEN-3.2.** Retention policy default.~~ **Resolved**: rotate by size at 5 MB. Rotated files accumulate (no auto-deletion in v0.0.3). Web UI reads current file only; older-file scroll-back is post-v0.0.3.
 - ~~**OPEN-3.3.** Instrumentation invasiveness.~~ **Resolved**: shared dispatcher (`dispatcher.run()`). MCP tools become thin wrappers; the dispatcher owns request-id generation, model resolution per Epic 1 D4, event emission, and failure handling. Logging failure does not fail dispatch — `emit_event` falls back to stderr. Detail in the "MCP server instrumentation" subsection.
-- ~~**OPEN-3.4.** Whether v0.0.3 introduces a "blocked / need human input" event type.~~ **Resolved**: deferred to v0.0.4+. v0.0.3's worker is the unchanged v0.0.2 `cheap_code_gen`; shipping the event type would require worker behavior change. Re-trigger: any richer worker that supports human-in-the-loop signaling. See [ADR-0007](../adr/0007-dispatch-log-format-and-schema.md).
+- ~~**OPEN-3.4.** Whether v0.0.3 introduces a "blocked / need human input" event type.~~ **Resolved**: deferred to v0.0.4+. v0.0.3's worker is the unchanged v0.0.2 `coder`; shipping the event type would require worker behavior change. Re-trigger: any richer worker that supports human-in-the-loop signaling. See [ADR-0007](../adr/0007-dispatch-log-format-and-schema.md).
 - ~~**OPEN-3.5.** Truncation rules.~~ **Resolved**: per-field byte caps (1 KB / 1 KB / 512 B / 512 B), head + tail with ellipsis marker, UTF-8-boundary-safe. The full payload still flows to Claude Code at dispatch time; only the log entry is truncated.
 - ~~**OPEN-3.6.** Cost / token-count display.~~ **Resolved**: optional `cost` object on `dispatch.end` carries `prompt_tokens` and `completion_tokens` when the provider returns them. No USD computation in v0.0.3. Missing cost shows as "—" in the UI.
 - ~~**OPEN-3.7.** Concurrency.~~ **Resolved**: POSIX `O_APPEND` + single `write()` ≤ `PIPE_BUF` is atomic across processes; 4 KB per-event cap (D3 truncation enforces) makes the guarantee hold. Windows is best-effort, documented. See [ADR-0007](../adr/0007-dispatch-log-format-and-schema.md).
