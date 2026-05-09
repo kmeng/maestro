@@ -634,6 +634,411 @@ async def librarian_handler(arguments: dict) -> list[TextContent]:
 
 
 # ============================================================
+# Role: reviewer
+#
+# Judge whether code matches a spec. Returns a verdict (pass/concerns/
+# fail) plus structured findings. NOT a refactorer or architect — the
+# system prompt forbids style and design opinions; only correspondence
+# to the spec is in scope.
+# ============================================================
+
+REVIEWER_SYSTEM_PROMPT = """You are a code reviewer on an AI software team. Your job is to judge whether
+code matches a spec. You are NOT here to redesign, refactor, or improve style
+— only to verify correspondence to the spec.
+
+You return STRICT JSON matching the contract below.
+
+Strict rules:
+- Verdict `pass` requires every spec requirement to be addressed.
+- Verdict `fail` requires at least one high-severity finding OR at least one
+  missed requirement.
+- Verdict `concerns` means the code addresses the spec but has medium/low
+  issues worth surfacing.
+- Cite specific function names or line ranges in `location`. "the code" is
+  not a location.
+- If the spec is ambiguous, flag in `concerns` rather than guessing.
+- Do NOT comment on style choices the spec didn't address.
+
+Return JSON of exactly this shape:
+{
+  "verdict": "pass" | "concerns" | "fail",
+  "findings": [
+    {"severity": "high" | "medium" | "low",
+     "location": "...",
+     "description": "..."}
+  ],
+  "missed_requirements": ["..."],
+  "concerns": ["..."]
+}
+Empty lists are allowed. Do NOT include any text outside the JSON object."""
+
+
+REVIEWER_TOOL = Tool(
+    name="reviewer",
+    description=(
+        "Review code against a spec. USE for: pass/fail judgment on whether "
+        "worker-generated code matches a spec; finding spec/code drift; "
+        "flagging missed acceptance criteria. DO NOT USE for: subjective style "
+        "review; architectural decisions; security review; cross-file reasoning."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "spec": {
+                "type": "string",
+                "description": (
+                    "The spec the code was supposed to implement, including "
+                    "hard constraints and acceptance criteria."
+                ),
+            },
+            "code": {
+                "type": "string",
+                "description": "The code under review.",
+            },
+            "language": {
+                "type": "string",
+                "description": "Programming language (python, typescript, etc.).",
+            },
+        },
+        "required": ["spec", "code", "language"],
+    },
+)
+
+
+_REVIEWER_VERDICTS = ("pass", "concerns", "fail")
+_REVIEWER_SEVERITIES = ("high", "medium", "low")
+
+
+def _validate_reviewer_output(data: Any) -> Optional[str]:
+    """Verify the parsed JSON output matches the reviewer contract.
+
+    Returns None on success, or a short string explaining the violation.
+    Extra fields are ignored (forward compatibility).
+    """
+    if not isinstance(data, dict):
+        return "output is not a dict"
+
+    for key in ("verdict", "findings", "missed_requirements", "concerns"):
+        if key not in data:
+            return f"missing key: {key}"
+
+    if data["verdict"] not in _REVIEWER_VERDICTS:
+        return (
+            f"verdict {data['verdict']!r} not in allowed values "
+            f"{_REVIEWER_VERDICTS}"
+        )
+
+    findings = data["findings"]
+    if not isinstance(findings, list):
+        return "findings is not a list"
+    for i, item in enumerate(findings):
+        if not isinstance(item, dict):
+            return f"findings[{i}] is not a dict"
+        for field in ("severity", "location", "description"):
+            if field not in item:
+                return f"findings[{i}].{field} is missing"
+        if item["severity"] not in _REVIEWER_SEVERITIES:
+            return (
+                f"findings[{i}].severity {item['severity']!r} not in allowed "
+                f"values {_REVIEWER_SEVERITIES}"
+            )
+        for field in ("location", "description"):
+            if not isinstance(item[field], str) or not item[field]:
+                return f"findings[{i}].{field} is not a non-empty string"
+
+    missed = data["missed_requirements"]
+    if not isinstance(missed, list):
+        return "missed_requirements is not a list"
+    for i, item in enumerate(missed):
+        if not isinstance(item, str):
+            return f"missed_requirements[{i}] is not a string"
+
+    concerns = data["concerns"]
+    if not isinstance(concerns, list):
+        return "concerns is not a list"
+    for i, item in enumerate(concerns):
+        if not isinstance(item, str):
+            return f"concerns[{i}] is not a string"
+
+    return None
+
+
+async def reviewer_handler(arguments: dict) -> list[TextContent]:
+    """Judge whether code matches a spec; return structured verdict + findings."""
+    spec = arguments.get("spec", "").strip()
+    code = arguments.get("code", "").strip()
+    language = arguments.get("language", "").strip()
+
+    if not spec or not code or not language:
+        return _error_response(
+            "input_validation",
+            "spec, code, and language are all required and must be non-empty",
+        )
+
+    user_prompt = f"Language: {language}\n\nSpec:\n{spec}\n\nCode:\n{code}"
+
+    start = time.time()
+    error_msg = None
+    raw = None
+    parsed = None
+    usage = None
+
+    try:
+        resp = await deepseek.chat.completions.create(
+            model=MODEL_PRO,
+            messages=[
+                {"role": "system", "content": REVIEWER_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.1,
+        )
+        raw = resp.choices[0].message.content
+        usage = {
+            "prompt_tokens": resp.usage.prompt_tokens,
+            "completion_tokens": resp.usage.completion_tokens,
+            "total_tokens": resp.usage.total_tokens,
+        }
+    except asyncio.TimeoutError:
+        error_msg = "model_timeout"
+    except Exception as e:
+        error_msg = f"model_api_error: {type(e).__name__}: {e}"
+
+    duration = round(time.time() - start, 2)
+
+    # Log only metadata, not the spec/code text — both are already in the
+    # caller's context for the same task being reviewed.
+    log_dispatch({
+        "ts": datetime.now().isoformat(),
+        "tool": "reviewer",
+        "model": MODEL_PRO,
+        "input": {
+            "spec_chars": len(spec),
+            "code_chars": len(code),
+            "language": language,
+        },
+        "output_raw_chars": len(raw) if raw else None,
+        "error": error_msg,
+        "duration_sec": duration,
+        "usage": usage,
+    })
+
+    if error_msg:
+        return _error_response("model_api_error", error_msg)
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        return _error_response("output_not_json", str(e), raw=raw[:500])
+
+    validation_error = _validate_reviewer_output(parsed)
+    if validation_error:
+        return _error_response("output_schema_invalid", validation_error, raw=parsed)
+
+    return [TextContent(
+        type="text",
+        text=json.dumps(parsed, ensure_ascii=False, indent=2),
+    )]
+
+
+# ============================================================
+# Role: scribe
+#
+# Draft commit messages and PR bodies from a diff plus issue context.
+# Routine text generation — flash-tier model is sufficient.
+# ============================================================
+
+SCRIBE_SYSTEM_PROMPT = """You are a scribe on an AI software team. Your job is to write commit messages
+and PR bodies that follow the project's conventions exactly.
+
+You return STRICT JSON matching the contract below.
+
+Strict rules:
+- Subject line under 80 chars; use Conventional Commits prefix
+  (feat / fix / docs / refactor / test / chore / etc).
+- Body explains the WHY (motivation, decision), not the WHAT (the diff itself
+  shows the WHAT).
+- Include `Closes #N.` on its own line if the convention says so. Otherwise use
+  `Refs #N.` per the convention text.
+- Include co-author lines per the convention.
+- Do NOT invent details not present in the diff or issue.
+- If the diff is large or ambiguous, flag in `concerns` rather than overstating
+  what changed.
+
+Return JSON of exactly this shape:
+{
+  "commit_message": "...",
+  "pr_title": "...",
+  "pr_body": "...",
+  "concerns": ["..."]
+}
+- `commit_message`: full subject + body, including any co-author lines.
+- `pr_title`: under 70 chars per Maestro convention.
+- `pr_body`: Markdown, following the project's PR body convention from the
+  `convention` field of the input.
+Empty `concerns` list is allowed. Do NOT include any text outside the JSON object."""
+
+
+SCRIBE_TOOL = Tool(
+    name="scribe",
+    description=(
+        "Draft commit messages and PR bodies. USE for: Conventional Commits "
+        "message + PR body from a git diff plus issue context. DO NOT USE for: "
+        "release notes (different scope); code comments; user-facing documentation."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "diff": {
+                "type": "string",
+                "description": "Output of `git diff` for the change being committed.",
+            },
+            "issue_number": {
+                "type": "integer",
+                "description": "Issue number this commit addresses.",
+            },
+            "issue_title": {
+                "type": "string",
+                "description": "Title of the issue being addressed.",
+            },
+            "issue_body": {
+                "type": "string",
+                "description": "Body of the issue (for context on scope and acceptance criteria).",
+            },
+            "convention": {
+                "type": "string",
+                "description": (
+                    "Project's commit message and PR body conventions. Include "
+                    "Conventional Commits prefix rules, co-author attribution "
+                    "format, and Closes/Refs placement rules."
+                ),
+            },
+        },
+        "required": ["diff", "issue_number", "issue_title", "issue_body", "convention"],
+    },
+)
+
+
+def _validate_scribe_output(data: Any) -> Optional[str]:
+    """Verify the parsed JSON output matches the scribe contract.
+
+    Returns None on success, or a short string explaining the violation.
+    Extra fields are ignored (forward compatibility).
+    """
+    if not isinstance(data, dict):
+        return "output is not a dict"
+
+    for key in ("commit_message", "pr_title", "pr_body", "concerns"):
+        if key not in data:
+            return f"missing key: {key}"
+
+    for key in ("commit_message", "pr_title"):
+        if not isinstance(data[key], str) or not data[key]:
+            return f"{key} is not a non-empty string"
+
+    if not isinstance(data["pr_body"], str):
+        return "pr_body is not a string"
+
+    concerns = data["concerns"]
+    if not isinstance(concerns, list):
+        return "concerns is not a list"
+    for i, item in enumerate(concerns):
+        if not isinstance(item, str):
+            return f"concerns[{i}] is not a string"
+
+    return None
+
+
+async def scribe_handler(arguments: dict) -> list[TextContent]:
+    """Draft a commit message and PR body from a diff + issue context."""
+    diff = arguments.get("diff", "").strip()
+    issue_number = arguments.get("issue_number")
+    issue_title = arguments.get("issue_title", "").strip()
+    issue_body = arguments.get("issue_body", "").strip()
+    convention = arguments.get("convention", "").strip()
+
+    if not diff:
+        return _error_response("input_validation", "diff is required and must be non-empty")
+    if not isinstance(issue_number, int):
+        return _error_response("input_validation", "issue_number must be an integer")
+    if not issue_title:
+        return _error_response("input_validation", "issue_title is required")
+    if not convention:
+        return _error_response("input_validation", "convention is required")
+    # issue_body may be empty — some issues are very terse; we don't require it.
+
+    user_prompt = (
+        f"Issue #{issue_number}: {issue_title}\n\n"
+        f"Issue body:\n{issue_body}\n\n"
+        f"Project conventions:\n{convention}\n\n"
+        f"Diff:\n{diff}"
+    )
+
+    start = time.time()
+    error_msg = None
+    raw = None
+    parsed = None
+    usage = None
+
+    try:
+        resp = await deepseek.chat.completions.create(
+            model=MODEL_FLASH,
+            messages=[
+                {"role": "system", "content": SCRIBE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+        )
+        raw = resp.choices[0].message.content
+        usage = {
+            "prompt_tokens": resp.usage.prompt_tokens,
+            "completion_tokens": resp.usage.completion_tokens,
+            "total_tokens": resp.usage.total_tokens,
+        }
+    except asyncio.TimeoutError:
+        error_msg = "model_timeout"
+    except Exception as e:
+        error_msg = f"model_api_error: {type(e).__name__}: {e}"
+
+    duration = round(time.time() - start, 2)
+
+    # Log metadata only — diff and issue body are already in the caller's
+    # context for the commit being drafted.
+    log_dispatch({
+        "ts": datetime.now().isoformat(),
+        "tool": "scribe",
+        "model": MODEL_FLASH,
+        "input": {
+            "diff_chars": len(diff),
+            "issue_number": issue_number,
+            "issue_title": issue_title,
+        },
+        "output_raw_chars": len(raw) if raw else None,
+        "error": error_msg,
+        "duration_sec": duration,
+        "usage": usage,
+    })
+
+    if error_msg:
+        return _error_response("model_api_error", error_msg)
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        return _error_response("output_not_json", str(e), raw=raw[:500])
+
+    validation_error = _validate_scribe_output(parsed)
+    if validation_error:
+        return _error_response("output_schema_invalid", validation_error, raw=parsed)
+
+    return [TextContent(
+        type="text",
+        text=json.dumps(parsed, ensure_ascii=False, indent=2),
+    )]
+
+
+# ============================================================
 # Tool registry — single source of truth.
 # Adding a new role = one (Tool, handler) entry below.
 # ============================================================
@@ -643,6 +1048,8 @@ ToolHandler = Callable[[dict], Awaitable[list[TextContent]]]
 TOOLS_REGISTRY: dict[str, tuple[Tool, ToolHandler]] = {
     CODER_TOOL.name: (CODER_TOOL, coder_handler),
     LIBRARIAN_TOOL.name: (LIBRARIAN_TOOL, librarian_handler),
+    REVIEWER_TOOL.name: (REVIEWER_TOOL, reviewer_handler),
+    SCRIBE_TOOL.name: (SCRIBE_TOOL, scribe_handler),
 }
 
 
