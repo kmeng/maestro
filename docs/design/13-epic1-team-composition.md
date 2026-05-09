@@ -109,7 +109,7 @@ strings — no i18n framework. Decided in pass-2 D6.
 | Web UI templates (HTML, buttons, headings, descriptions) | Chinese |
 | Wizard copy, step content, form labels | Chinese |
 | Validation error messages shown inline in the UI | Chinese |
-| MCP `cheap_code_gen` error returns (visible in Claude Code's response and in the problem panel) | Chinese |
+| MCP `coder` error returns (visible in Claude Code's response and in the problem panel) | Chinese |
 | `team.yaml` header comment block (the auto-written Web-UI header) | Chinese |
 | Dispatch log event identifiers (e.g., `dispatch.fallback.config_absent`) | English |
 | Code: variable / function / module names, code comments, internal log lines | English |
@@ -242,7 +242,7 @@ read layer (read-failure → file-level fallback per D4).
   config read/write.
 - New: Web UI screens for the wizard, role catalog, member view.
 - New: HTTP API endpoints under the Web UI for read/write of team config.
-- Existing: MCP server `cheap_code_gen` invocation must be able to
+- Existing: MCP server `coder` invocation must be able to
   resolve "what model is bound to role X" by reading the same config. This
   is a small but real change in the MCP path: today the model is
   hard-coded / env-driven; in v0.0.3 it comes from the team config. This
@@ -290,7 +290,7 @@ either the old file or the new file — never an in-between state.
   D2's strict-completeness rule → invalid → refused. The wizard guarantees
   completeness on every save, so this is only reachable via manual edits.
 - *Role isn't dispatched in v0.0.2/v0.0.3 yet.* Only Junior is dispatched
-  today (`cheap_code_gen`). Other roles in `team.yaml` are ignored at
+  today (`coder`). Other roles in `team.yaml` are ignored at
   dispatch time and consumed when their corresponding workers exist
   (post-v0.0.3). They still must be present and valid in the file —
   D1's strict-completeness rule isn't relaxed.
@@ -310,7 +310,7 @@ landed before T1.1 starts.
 - [ ] **T1.3** — HTTP API endpoints: `GET /api/team` (404 if absent, 200 on valid, 422 with field-map on invalid) and `POST /api/team` (201 on success, 422 on validation error). Unit tests per response code; smoke: curl flow. (~1h)
 - [ ] **T1.4** — Wizard UI: four steps (Welcome / Role tour / Confirm / Done). Inline validation. Cancel/Back semantics. Pre-fills from `architecture.md` defaults on first launch; from existing `team.yaml` on re-entry. Smoke: walk through wizard end-to-end on clean state and on re-entry. (~2h)
 - [ ] **T1.5** — Standing role-catalog view: read-only summary of saved team plus per-row edit. The non-wizard surface for changing one row. Smoke: edit one row, confirm `team.yaml` updated. (~1.5h)
-- [ ] **T1.6** — Wire MCP server's `cheap_code_gen` to resolve Junior's `model` from `team.yaml` per D4: absent → v0.0.2 fallback; valid → use config; invalid → refuse with structured error. Emit `dispatch.fallback.config_absent` and `dispatch.refused.config_invalid` events. Unit tests on all three branches; smoke: clean install with `.env` only still works exactly as v0.0.2. (~1.5h)
+- [ ] **T1.6** — Wire MCP server's `coder` to resolve Junior's `model` from `team.yaml` per D4: absent → v0.0.2 fallback; valid → use config; invalid → refuse with structured error. Emit `dispatch.fallback.config_absent` and `dispatch.refused.config_invalid` events. Unit tests on all three branches; smoke: clean install with `.env` only still works exactly as v0.0.2. (~1.5h)
 - [ ] **T1.7** — End-to-end verification PR. Documented manual smoke: wizard → use configured model → break `team.yaml` → refuse cleanly → fix → works. Plus regression: `.env`-only project still works as v0.0.2. (~1h)
 
 ## Acceptance criteria
@@ -319,9 +319,9 @@ landed before T1.1 starts.
   first-launch wizard end-to-end and produce a valid team config.
 - The role catalog standing view reflects the saved config and can edit
   it.
-- A `cheap_code_gen` invocation after team composition uses the model
+- A `coder` invocation after team composition uses the model
   bound to the configured role.
-- A `cheap_code_gen` invocation **before** any team composition still
+- A `coder` invocation **before** any team composition still
   works (v0.0.2 fallback path), with a clear log indication that fallback
   was used.
 - The Architect identity is shown in the catalog but cannot be edited or

@@ -355,7 +355,7 @@ UI).
 - [ ] **T2.6** — HTTP API endpoints: `POST /api/scaffold/plan` returns plan JSON (file rows + pre-flight banner); `POST /api/scaffold/apply` is an SSE endpoint streaming per-file events + `plan_complete`. On `plan_complete`, registers the project (T2.5). (~1.5h)
 - [ ] **T2.7** — Web UI screens: project picker, plan preview (3-layer disclosure), per-row drill-down with diff rendering for `APPEND_DELIMITED`, conflict-resolution UX (Skip / Open file). Copy in Chinese per D6. (~2h)
 - [ ] **T2.8** — Wire auto-launch of Epic 1's wizard after successful apply. Depends on Epic 1 T1.4. (~30m)
-- [ ] **T2.9** — End-to-end verification PR. Documented manual smoke: new-project flow → wizard → `cheap_code_gen`; take-over → wizard → `cheap_code_gen`; partial-apply failure recovery; idempotent re-run; v0.0.2 regression check (project with no `.maestro/` still works). (~1.5h)
+- [ ] **T2.9** — End-to-end verification PR. Documented manual smoke: new-project flow → wizard → `coder`; take-over → wizard → `coder`; partial-apply failure recovery; idempotent re-run; v0.0.2 regression check (project with no `.maestro/` still works). (~1.5h)
 
 T2.4 and T2.5 are parallelizable with T2.1–T2.3.
 

@@ -47,7 +47,7 @@ those land in subsequent epics.
 
 In parallel, the user's existing way of using Maestro keeps working: Claude
 Code launches the MCP server as a stdio subprocess (today's behavior),
-`cheap_code_gen` is callable, nothing changes for an existing user who
+`coder` is callable, nothing changes for an existing user who
 hasn't opted into the Web UI.
 
 The empty-shell page text is **Chinese (`zh-CN`)** per the vision-level
@@ -229,7 +229,7 @@ doesn't touch the Web UI process.
 - [ ] **T0.4** — Add empty-shell page at `GET /`. Vendor `htmx.min.js` under `webui/static/vendor/`. Page links htmx but has no interactivity yet — Maestro-branded placeholder. Smoke: open URL in browser, confirm page loads. (~1h)
 - [ ] **T0.5** — Add launcher: console script (e.g., `maestro-webui`) wired into `pyproject.toml`, plus port-conflict strategy from D4 (default `19830`, scan +1..+10, error at cap). Unit test the port-scan helper; smoke: run with another process on `19830`, confirm fallback. (~1.5h)
 - [ ] **T0.6** — Add `scripts/dev_emit_dispatch.py` — stub version that writes a placeholder event into `<project>/.maestro/logs/`. Real schema lands in Epic 3; this PR establishes the script and CLI shape. Smoke: run script, verify file appears. (~30m)
-- [ ] **T0.7** — End-to-end verification PR. Documented manual smoke test: clean install → `pip install -e .` → `maestro-webui` → browser at `http://localhost:19830` → page renders → `cheap_code_gen` from a Claude Code session still works unchanged. May land as a CI-runnable script if feasible. (~1h)
+- [ ] **T0.7** — End-to-end verification PR. Documented manual smoke test: clean install → `pip install -e .` → `maestro-webui` → browser at `http://localhost:19830` → page renders → `coder` from a Claude Code session still works unchanged. May land as a CI-runnable script if feasible. (~1h)
 
 ## Acceptance criteria
 
@@ -237,7 +237,7 @@ doesn't touch the Web UI process.
   URL, and the URL serves an empty-shell Maestro page in a browser.
 - The Web UI process is independent of Claude Code: it runs whether or not
   a Claude Code session exists.
-- The MCP server's `cheap_code_gen` invocation works identically to v0.0.2:
+- The MCP server's `coder` invocation works identically to v0.0.2:
   same input, same output, no new required env vars beyond what v0.0.2
   required.
 - A documented shared-paths module exists and is the single place either

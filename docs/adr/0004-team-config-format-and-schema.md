@@ -19,7 +19,7 @@ The decision is load-bearing for sibling epics:
   the dispatch log to label rows in the live view. It needs the role
   identifier set to be stable.
 - The Web UI (Epic 0–1) reads, writes, and validates the file. The MCP
-  server reads it to resolve "which model should `cheap_code_gen` use
+  server reads it to resolve "which model should `coder` use
   for this role" at dispatch time.
 
 The file is end-user-visible: a contributor browsing the project will

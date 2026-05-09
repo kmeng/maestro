@@ -336,10 +336,17 @@ dispatches all eligible work directly.
 
 ### Renaming `cheap_code_gen` → `coder`
 
-13 files reference `cheap_code_gen` as of design time. All references are
-textual; no behavioral change. The rename is part of PR-B alongside
-librarian implementation, since that PR is the natural moment a reader
-will see the new naming convention land.
+13 files reference `cheap_code_gen` as of design time. All textual
+references update per the rule below. The rename lands in PR-B
+alongside librarian implementation, since that PR is the natural moment
+a reader will see the new naming convention land.
+
+**Model bump (added during T5.1 kickoff)**: PR-B also bumps `coder`'s
+underlying model from `deepseek-coder` to `deepseek-v4-pro` per the
+resolution of OPEN-5.6. The rename is therefore not strictly textual
+— callers will observe a different model on the other end of the
+tool. Behavior shape is unchanged (same I/O contract); only the
+serving model changes.
 
 Files affected (per `grep -rn cheap_code_gen`):
 
@@ -455,8 +462,12 @@ PRs in path-2 compressed flow. Each PR keeps `v0.0.3` runnable.
   recurring annoyance.
 - **OPEN-5.5**: cost telemetry per role (token spend, calls/day). Epic
   3's dispatch log will eventually carry this; not duplicated here.
-- **OPEN-5.6**: should the renamed `coder` continue using
-  `deepseek-coder` or switch to `deepseek-v4-pro`? v0.0.3 keeps
-  `deepseek-coder` (no behavior change in the rename PR). Trigger to
-  revisit: observed quality degradation, or DeepSeek deprecating the
-  `deepseek-coder` model line.
+- ~~**OPEN-5.6**: should the renamed `coder` continue using
+  `deepseek-coder` or switch to `deepseek-v4-pro`?~~ **Resolved
+  2026-05-09 during T5.1 kickoff**: `coder` switches to
+  `deepseek-v4-pro`. Rationale: the v4 lineup is the project's
+  forward direction; keeping `coder` on the legacy `deepseek-coder`
+  model would force every future prompt-tuning decision to track two
+  model lineages. T5.1 carries the model bump alongside the rename;
+  the original "no behavior change" framing in §3.6 is therefore
+  superseded — see updated note in that section.
