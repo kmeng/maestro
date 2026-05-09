@@ -244,6 +244,7 @@ def test_librarian_happy_path_with_inline_text(server, monkeypatch):
     )
     assert len(result) == 1
     parsed = json.loads(result[0].text)
+    assert isinstance(parsed.pop("_banner"), str)
     assert parsed == valid_output
 
     # Verify the request used MODEL_FLASH and JSON response format
@@ -550,6 +551,7 @@ def test_reviewer_happy_path_uses_pro(server, monkeypatch):
         server._reviewer_impl({"spec": "do X", "code": "def x(): pass", "language": "python"})
     )
     parsed = json.loads(result[0].text)
+    assert isinstance(parsed.pop("_banner"), str)
     assert parsed == valid_output
     assert mock_create.call_args.kwargs["model"] == server.MODEL_PRO
 
@@ -647,6 +649,7 @@ def test_scribe_happy_path_uses_flash(server, monkeypatch):
         "convention": "Conventional Commits.",
     }))
     parsed = json.loads(result[0].text)
+    assert isinstance(parsed.pop("_banner"), str)
     assert parsed == valid_output
     assert mock_create.call_args.kwargs["model"] == server.MODEL_FLASH
 

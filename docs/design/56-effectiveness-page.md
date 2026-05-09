@@ -184,14 +184,54 @@ var is unset, the row records `task_id=null` and is shown in a
 ### 3.3 Banner parity (T6.1)
 
 Independent of JSONL emission, banners on librarian/reviewer/scribe
-must reach format parity with coder. This is its own sub-issue
-because it has no dependency on the rest: even without JSONL, parity
-helps human-visible orchestrator logs.
+must reach shape parity with coder. This is its own sub-issue because
+it has no dependency on the rest: even without JSONL, parity helps
+human-visible orchestrator logs.
 
-The fix lives in each tool's dispatch wrapper in
-`bootstrap/maestro_server.py`. Today, only `coder` prefixes
-`result_text` with `[coder dispatch — <model> — <wall>s — <tokens> tokens]`.
-T6.1 adds the equivalent prefix for the other three.
+Banner shape (all four workers, identical):
+
+    [<tool> dispatch — <model> — <wall>s — <total_tokens> tokens]
+
+Placement differs by output format:
+
+- `coder` emits plaintext (DeepSeek reasoning + code blocks). The
+  banner is a plain string prefix on `result_text`, separated from
+  the body by `\n\n`. Already implemented before T6.1.
+- `librarian` / `reviewer` / `scribe` emit strict JSON. Prefixing a
+  string before the JSON would break `json.loads()` for every
+  consumer (including the orchestrator). For these three workers,
+  the banner is embedded as a `_banner` field inside the JSON
+  object. The validators already ignore extra fields per their
+  "forward compatibility" docstrings, so no allowlist edit is
+  needed. Error-path responses (`_error_response(...)`) intentionally
+  omit `_banner` because their `usage` is null — a banner with
+  `total_tokens=None` would lie. Coder's error path is symmetric.
+
+Extraction rule (single helper, `extract_banner(result_text)` in
+`bootstrap/maestro_server.py`):
+
+    if result_text.startswith("["):
+        return result_text.split("\n", 1)[0]   # plaintext-prefix case
+    try:
+        obj = json.loads(result_text)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if isinstance(obj, dict):
+        banner = obj.get("_banner")
+        if isinstance(banner, str):
+            return banner
+    return None
+
+Banner *shape* is identical across workers; *placement* follows
+output type. coder's output is intentionally unstructured (the
+orchestrator reads code, not JSON) while the other three are
+intentionally JSON (validated, machine-consumable). T6.1 preserves
+both contracts.
+
+Banner construction itself goes through `_build_banner(tool, model,
+duration, total_tokens)` so the format string lives in one place; if
+the shape ever changes, the regex in `BANNER_REGEX` and the tests
+in `tests/test_worker_banners.py` are the single migration surface.
 
 ## 4. Renderer
 
