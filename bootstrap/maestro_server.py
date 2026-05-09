@@ -21,11 +21,12 @@ Verify:
 import asyncio
 import json
 import os
+import secrets
 import sys
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
 
@@ -137,6 +138,107 @@ def log_dispatch(record: dict) -> None:
     except Exception as e:
         # Logging must never break the main flow
         print(f"[maestro] log write failed: {e}", file=sys.stderr)
+
+
+# ============================================================
+# Dispatch telemetry (Epic 6 / T6.2)
+# ============================================================
+
+# Default path; overridable per-process via MAESTRO_DISPATCH_LOG.
+_DEFAULT_DISPATCH_LOG_PATH = (
+    Path(__file__).resolve().parent.parent / "docs" / "data" / "dispatch-log.jsonl"
+)
+
+# Per-task per-tool sequence counter. Resets on process restart, but combined
+# with a process-local random prefix the row_id stays globally unique within
+# the JSONL file.
+_DISPATCH_SEQ: dict[tuple[str, str], int] = {}
+_DISPATCH_PREFIX = secrets.token_hex(4)
+_DISPATCH_SCHEMA_VERSION = 1
+
+
+def _next_seq(task_id: str, tool: str) -> int:
+    key = (task_id or "noattr", tool)
+    _DISPATCH_SEQ[key] = _DISPATCH_SEQ.get(key, 0) + 1
+    return _DISPATCH_SEQ[key]
+
+
+def _resolve_dispatch_log_path() -> Optional[Path]:
+    """Return the path to write to, or None if telemetry is disabled.
+
+    Three modes per design 56 § 2.2:
+    - env var unset → default path
+    - env var empty string → disabled (returns None)
+    - env var non-empty → that path
+    """
+    raw = os.environ.get("MAESTRO_DISPATCH_LOG")
+    if raw is None:
+        return _DEFAULT_DISPATCH_LOG_PATH
+    if raw == "":
+        return None
+    return Path(raw)
+
+
+def _emit_dispatch_row(
+    *,
+    tool: str,
+    model: str,
+    model_provider: str,
+    started_at: float,
+    duration: float,
+    usage: Optional[dict],
+    error: Optional[str],
+) -> None:
+    """Append one structured JSONL row for a dispatch.
+
+    Schema per design 56 § 2.1. Fail-soft: any IOError logs to stderr and
+    returns without raising — telemetry must never break a worker dispatch.
+    """
+    path = _resolve_dispatch_log_path()
+    if path is None:
+        return
+
+    task_id = os.environ.get("MAESTRO_CURRENT_TASK") or None
+    issue_env = os.environ.get("MAESTRO_CURRENT_ISSUE")
+    issue_number: Optional[int]
+    try:
+        issue_number = int(issue_env) if issue_env else None
+    except ValueError:
+        issue_number = None
+
+    seq = _next_seq(task_id or "noattr", tool)
+    row_id = f"{_DISPATCH_PREFIX}-{task_id or 'noattr'}-{tool}-{seq}"
+
+    started_iso = datetime.fromtimestamp(started_at, tz=timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+    row = {
+        "row_id": row_id,
+        "task_id": task_id,
+        "issue_number": issue_number,
+        "tool": tool,
+        "model": model,
+        "model_provider": model_provider,
+        "wall_s": duration,
+        "prompt_tokens": (usage or {}).get("prompt_tokens"),
+        "completion_tokens": (usage or {}).get("completion_tokens"),
+        "total_tokens": (usage or {}).get("total_tokens"),
+        "started_at": started_iso,
+        "journal_ref": None,
+        "is_estimate": False,
+        "est_method": None,
+        "supersedes": None,
+        "schema_version": _DISPATCH_SCHEMA_VERSION,
+        "error": error,
+    }
+
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row, sort_keys=True) + "\n")
+    except Exception as e:
+        print(f"[maestro] dispatch row write failed: {e}", file=sys.stderr)
 
 
 # ============================================================
@@ -415,6 +517,15 @@ async def _coder_impl(arguments: dict) -> list[TextContent]:
         "duration_sec": duration,
         "usage": usage,
     })
+    _emit_dispatch_row(
+        tool="coder",
+        model=MODEL_PRO,
+        model_provider="deepseek",
+        started_at=start,
+        duration=duration,
+        usage=usage,
+        error=error_msg,
+    )
 
     if error_msg:
         return [TextContent(
@@ -737,6 +848,15 @@ async def _librarian_impl(arguments: dict) -> list[TextContent]:
         "duration_sec": duration,
         "usage": usage,
     })
+    _emit_dispatch_row(
+        tool="librarian",
+        model=MODEL_FLASH,
+        model_provider="deepseek",
+        started_at=start,
+        duration=duration,
+        usage=usage,
+        error=error_msg,
+    )
 
     if error_msg:
         return _error_response("model_api_error", error_msg)
@@ -974,6 +1094,15 @@ async def _reviewer_impl(arguments: dict) -> list[TextContent]:
         "duration_sec": duration,
         "usage": usage,
     })
+    _emit_dispatch_row(
+        tool="reviewer",
+        model=MODEL_PRO,
+        model_provider="deepseek",
+        started_at=start,
+        duration=duration,
+        usage=usage,
+        error=error_msg,
+    )
 
     if error_msg:
         return _error_response("model_api_error", error_msg)
@@ -1182,6 +1311,15 @@ async def _scribe_impl(arguments: dict) -> list[TextContent]:
         "duration_sec": duration,
         "usage": usage,
     })
+    _emit_dispatch_row(
+        tool="scribe",
+        model=MODEL_FLASH,
+        model_provider="deepseek",
+        started_at=start,
+        duration=duration,
+        usage=usage,
+        error=error_msg,
+    )
 
     if error_msg:
         return _error_response("model_api_error", error_msg)
