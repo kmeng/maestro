@@ -32,6 +32,20 @@ from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
 # ============================================================
+# v0.0.3 transition: expose the `maestro/` package on sys.path so
+# paths.py and future shared modules are reachable from this
+# bootstrap script. The import below is a startup probe — if the
+# package layout is broken the MCP server fails loudly here rather
+# than when a downstream caller first needs a path. T0.5 will
+# replace this shim with proper pyproject.toml-based packaging.
+# ============================================================
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from maestro import paths as _maestro_paths  # noqa: E402, F401
+
+# ============================================================
 # Configuration
 # ============================================================
 
