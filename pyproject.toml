@@ -14,6 +14,7 @@ dependencies = [
     "sse-starlette",
     "jinja2",
     "pyyaml",
+    "pydantic>=2",
 ]
 
 [project.scripts]
