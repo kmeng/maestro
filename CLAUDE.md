@@ -34,6 +34,8 @@ Before writing any code for an implementation task, you MUST:
 3. State the implementation plan back to the user, mapping each acceptance criterion in the briefing to "covered by approach X" with one short sentence per criterion.
 4. Wait for the user's explicit `go` (or equivalent) before writing code.
 
+When dispatching workers (`coder` / `librarian` / `reviewer` / `scribe`) for an implementation task, **always pass `task_id` (e.g., `"T6.8"`) and `issue_number` (e.g., `64`) as parameters** so the dispatch row is attributed to the right task in `docs/data/dispatch-log.jsonl`. Without these, the row falls through to git-branch inference (works only when the branch matches `(feature|fix|refactor|docs)/<n>-<slug>`) or to the "unattributed" bucket. See ADR-0011.
+
 This protocol applies whenever a request can be traced to an existing task issue. If the user asks for code without referencing an issue, ask which task it corresponds to before proceeding.
 
 The point of mandatory pre-reading: AI implementers start cold every session. Rich, mandatory-reading briefings are the difference between on-target implementation and "close enough but missing constraint X."

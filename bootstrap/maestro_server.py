@@ -21,10 +21,13 @@ Verify:
 import asyncio
 import json
 import os
+import re
 import secrets
+import subprocess
 import sys
 import time
 import uuid
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -179,8 +182,96 @@ def _resolve_dispatch_log_path() -> Optional[Path]:
     return Path(raw)
 
 
+# ----------------------------------------------------------------
+# T6.8: dispatch attribution chain (ADR-0011)
+# ----------------------------------------------------------------
+
+_BRANCH_RE = re.compile(r"^(?:feature|fix|refactor|docs)/(\d+)-")
+_ENV_DEPRECATION_WARNED = False
+
+
+def _warn_env_deprecation_once() -> None:
+    """Emit DeprecationWarning the first time env-var attribution is used per process."""
+    global _ENV_DEPRECATION_WARNED
+    if _ENV_DEPRECATION_WARNED:
+        return
+    _ENV_DEPRECATION_WARNED = True
+    warnings.warn(
+        "MAESTRO_CURRENT_TASK / MAESTRO_CURRENT_ISSUE env vars for "
+        "dispatch attribution are deprecated and will be removed in "
+        "v0.0.4. Pass task_id / issue_number as parameters on each "
+        "worker dispatch instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+
+def _infer_issue_from_branch() -> Optional[int]:
+    """Read current git branch and parse its leading issue number.
+
+    Returns None on any failure (no git, not a repo, regex miss, etc.).
+    Recomputed per emit — branch can change mid-session.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+        m = _BRANCH_RE.match(result.stdout.strip())
+        return int(m.group(1)) if m else None
+    except (subprocess.TimeoutExpired, OSError, ValueError):
+        return None
+
+
+def _resolve_attribution(
+    task_id: Optional[str],
+    issue_number: Optional[int],
+) -> tuple[Optional[str], Optional[int]]:
+    """Resolve dispatch attribution per ADR-0011 precedence chain.
+
+    Order: explicit param > env var (deprecated) > git branch > unattributed.
+    Partial-friendly: if either explicit param is provided, the other is
+    NOT backfilled from env/branch. Avoids stale-env contamination of
+    intentional partial attributions.
+    """
+    # Layer 1: explicit param (treat task_id="" as None;
+    # issue_number=0 is allowed as a legitimate int)
+    explicit_task = task_id if task_id else None
+    if explicit_task is not None or issue_number is not None:
+        return explicit_task, issue_number
+
+    # Layer 2: env var (deprecated)
+    env_task = os.environ.get("MAESTRO_CURRENT_TASK") or None
+    env_issue_raw = os.environ.get("MAESTRO_CURRENT_ISSUE")
+    env_issue: Optional[int] = None
+    if env_issue_raw:
+        try:
+            env_issue = int(env_issue_raw)
+        except ValueError:
+            env_issue = None
+
+    if env_task is not None or env_issue is not None:
+        _warn_env_deprecation_once()
+        return env_task, env_issue
+
+    # Layer 3: git branch inference (only issue_number; task_id stays None)
+    branch_issue = _infer_issue_from_branch()
+    if branch_issue is not None:
+        return None, branch_issue
+
+    # Layer 4: unattributed
+    return None, None
+
+
 def _emit_dispatch_row(
     *,
+    task_id: Optional[str] = None,
+    issue_number: Optional[int] = None,
     tool: str,
     model: str,
     model_provider: str,
@@ -191,20 +282,15 @@ def _emit_dispatch_row(
 ) -> None:
     """Append one structured JSONL row for a dispatch.
 
-    Schema per design 56 § 2.1. Fail-soft: any IOError logs to stderr and
-    returns without raising — telemetry must never break a worker dispatch.
+    Schema per design 56 § 2.1. Attribution per ADR-0011 (T6.8). Fail-soft:
+    any IOError logs to stderr and returns without raising — telemetry
+    must never break a worker dispatch.
     """
     path = _resolve_dispatch_log_path()
     if path is None:
         return
 
-    task_id = os.environ.get("MAESTRO_CURRENT_TASK") or None
-    issue_env = os.environ.get("MAESTRO_CURRENT_ISSUE")
-    issue_number: Optional[int]
-    try:
-        issue_number = int(issue_env) if issue_env else None
-    except ValueError:
-        issue_number = None
+    task_id, issue_number = _resolve_attribution(task_id, issue_number)
 
     seq = _next_seq(task_id or "noattr", tool)
     row_id = f"{_DISPATCH_PREFIX}-{task_id or 'noattr'}-{tool}-{seq}"
@@ -444,6 +530,20 @@ CODER_TOOL = Tool(
                 "type": "string",
                 "description": "Programming language (python, typescript, go, rust, etc.)",
             },
+            "task_id": {
+                "type": "string",
+                "description": (
+                    "Optional task identifier (e.g., 'T6.8') for dispatch "
+                    "telemetry attribution. See ADR-0011."
+                ),
+            },
+            "issue_number": {
+                "type": "integer",
+                "description": (
+                    "Optional issue number (e.g., 64) for dispatch telemetry "
+                    "attribution. See ADR-0011."
+                ),
+            },
         },
         "required": ["spec", "language"],
     },
@@ -468,6 +568,14 @@ async def _coder_impl(arguments: dict) -> list[TextContent]:
             type="text",
             text="ERROR: Both 'spec' and 'language' are required and must be non-empty."
         )]
+
+    # T6.8 attribution fields (optional; ADR-0011)
+    attribution_task_id = arguments.get("task_id")
+    if attribution_task_id is not None and not isinstance(attribution_task_id, str):
+        return [TextContent(type="text", text="ERROR: task_id must be a string when provided.")]
+    attribution_issue_number = arguments.get("issue_number")
+    if attribution_issue_number is not None and not isinstance(attribution_issue_number, int):
+        return [TextContent(type="text", text="ERROR: issue_number must be an integer when provided.")]
 
     system_prompt = (
         f"You are a precise code generator working as part of an AI software team. "
@@ -518,6 +626,8 @@ async def _coder_impl(arguments: dict) -> list[TextContent]:
         "usage": usage,
     })
     _emit_dispatch_row(
+        task_id=attribution_task_id,
+        issue_number=attribution_issue_number,
         tool="coder",
         model=MODEL_PRO,
         model_provider="deepseek",
@@ -648,6 +758,20 @@ LIBRARIAN_TOOL = Tool(
                     "constraints from this design doc.'"
                 ),
             },
+            "task_id": {
+                "type": "string",
+                "description": (
+                    "Optional task identifier (e.g., 'T6.8') for dispatch "
+                    "telemetry attribution. See ADR-0011."
+                ),
+            },
+            "issue_number": {
+                "type": "integer",
+                "description": (
+                    "Optional issue number (e.g., 64) for dispatch telemetry "
+                    "attribution. See ADR-0011."
+                ),
+            },
         },
         "required": ["query"],
     },
@@ -775,6 +899,14 @@ async def _librarian_impl(arguments: dict) -> list[TextContent]:
     if not query:
         return _error_response("input_validation", "query is required")
 
+    # T6.8 attribution fields (optional; ADR-0011)
+    attribution_task_id = arguments.get("task_id")
+    if attribution_task_id is not None and not isinstance(attribution_task_id, str):
+        return _error_response("input_validation", "task_id must be a string")
+    attribution_issue_number = arguments.get("issue_number")
+    if attribution_issue_number is not None and not isinstance(attribution_issue_number, int):
+        return _error_response("input_validation", "issue_number must be an integer")
+
     # The whole point of the role is to keep document_text out of the
     # caller's context — only the worker sees the bytes.
     if file_path:
@@ -849,6 +981,8 @@ async def _librarian_impl(arguments: dict) -> list[TextContent]:
         "usage": usage,
     })
     _emit_dispatch_row(
+        task_id=attribution_task_id,
+        issue_number=attribution_issue_number,
         tool="librarian",
         model=MODEL_FLASH,
         model_provider="deepseek",
@@ -963,6 +1097,20 @@ REVIEWER_TOOL = Tool(
                 "type": "string",
                 "description": "Programming language (python, typescript, etc.).",
             },
+            "task_id": {
+                "type": "string",
+                "description": (
+                    "Optional task identifier (e.g., 'T6.8') for dispatch "
+                    "telemetry attribution. See ADR-0011."
+                ),
+            },
+            "issue_number": {
+                "type": "integer",
+                "description": (
+                    "Optional issue number (e.g., 64) for dispatch telemetry "
+                    "attribution. See ADR-0011."
+                ),
+            },
         },
         "required": ["spec", "code", "language"],
     },
@@ -1047,6 +1195,14 @@ async def _reviewer_impl(arguments: dict) -> list[TextContent]:
             "spec, code, and language are all required and must be non-empty",
         )
 
+    # T6.8 attribution fields (optional; ADR-0011)
+    attribution_task_id = arguments.get("task_id")
+    if attribution_task_id is not None and not isinstance(attribution_task_id, str):
+        return _error_response("input_validation", "task_id must be a string")
+    attribution_issue_number = arguments.get("issue_number")
+    if attribution_issue_number is not None and not isinstance(attribution_issue_number, int):
+        return _error_response("input_validation", "issue_number must be an integer")
+
     user_prompt = f"Language: {language}\n\nSpec:\n{spec}\n\nCode:\n{code}"
 
     start = time.time()
@@ -1095,6 +1251,8 @@ async def _reviewer_impl(arguments: dict) -> list[TextContent]:
         "usage": usage,
     })
     _emit_dispatch_row(
+        task_id=attribution_task_id,
+        issue_number=attribution_issue_number,
         tool="reviewer",
         model=MODEL_PRO,
         model_provider="deepseek",
@@ -1197,6 +1355,14 @@ SCRIBE_TOOL = Tool(
                     "format, and Closes/Refs placement rules."
                 ),
             },
+            "task_id": {
+                "type": "string",
+                "description": (
+                    "Optional task identifier (e.g., 'T6.8') for dispatch "
+                    "telemetry attribution. See ADR-0011. (issue_number "
+                    "above doubles as attribution issue.)"
+                ),
+            },
         },
         "required": ["diff", "issue_number", "issue_title", "issue_body", "convention"],
     },
@@ -1259,6 +1425,13 @@ async def _scribe_impl(arguments: dict) -> list[TextContent]:
         return _error_response("input_validation", "convention is required")
     # issue_body may be empty — some issues are very terse; we don't require it.
 
+    # T6.8 attribution: scribe reuses the existing required `issue_number`
+    # for attribution; only `task_id` is a new optional field (ADR-0011).
+    attribution_task_id = arguments.get("task_id")
+    if attribution_task_id is not None and not isinstance(attribution_task_id, str):
+        return _error_response("input_validation", "task_id must be a string")
+    attribution_issue_number = issue_number  # already validated above
+
     user_prompt = (
         f"Issue #{issue_number}: {issue_title}\n\n"
         f"Issue body:\n{issue_body}\n\n"
@@ -1312,6 +1485,8 @@ async def _scribe_impl(arguments: dict) -> list[TextContent]:
         "usage": usage,
     })
     _emit_dispatch_row(
+        task_id=attribution_task_id,
+        issue_number=attribution_issue_number,
         tool="scribe",
         model=MODEL_FLASH,
         model_provider="deepseek",
