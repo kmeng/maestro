@@ -10,6 +10,12 @@
 > after Epic 0 T0.1–T0.4 land first.
 >
 > ADR produced: [0004](../adr/0004-team-config-format-and-schema.md).
+>
+> **Realigned 2026-05-10**: role identifier set + default models
+> updated from `{pm/senior/junior/documentarian}` to
+> `{coder/librarian/reviewer/scribe}` to match Epic 5's actual
+> worker fleet. ADR-0004 carries the full rationale in its
+> Revisions section.
 
 ## Problem
 
@@ -55,15 +61,16 @@ what a "team" means, that the four roles work together, that Architect
 inputs. One button forward.
 
 **Step 2 — Role catalog tour.** All four roles on one screen, in order
-PM → Senior → Junior → Documentarian. For each role:
+coder → librarian → reviewer → scribe. For each role:
 
 - A short description (1–2 sentences).
 - An editable `model` field, pre-filled with the
-  [`architecture.md`](../architecture.md) default. Curated dropdown of
+  Epic 5 worker fleet default. Curated dropdown of
   known model IDs plus a "custom…" escape hatch that flips to free
   text. Validation rules from D2 apply regardless of input source.
-- An editable `member` field, pre-filled with a suggested alias (Alex /
-  Sam / Jamie / Drew). User can accept, edit, or replace. Required.
+- An editable `member` field, pre-filled with a suggested alias
+  (Cody / Lily / Rae / Sage). User can accept, edit, or replace.
+  Required.
 
 Inline validation as the user types. "Next" button enabled only when
 all four rows pass validation.
@@ -159,27 +166,27 @@ property, not a member property.
 schema_version: 1
 
 roles:
-  pm:
-    member: Alex
-    model: claude-sonnet-4-6
-  senior:
-    member: Sam
-    model: claude-sonnet-4-6
-  junior:
-    member: Jamie
-    model: deepseek-coder
-  documentarian:
-    member: Drew
-    model: qwen-plus
+  coder:
+    member: Cody
+    model: deepseek-v4-pro
+  librarian:
+    member: Lily
+    model: deepseek-v4-flash
+  reviewer:
+    member: Rae
+    model: deepseek-v4-pro
+  scribe:
+    member: Sage
+    model: deepseek-v4-flash
 ```
 
 Properties baked into the schema:
 
 - **Role-keyed map** enforces 1 role : 1 member at the schema level —
-  two PMs are not expressible.
+  two coders are not expressible.
 - **All four roles required**, each with `member` and `model` fields,
   both required. No partial configs.
-- **Defaults in code, not in file.** `architecture.md` defaults live in
+- **Defaults in code, not in file.** Epic 5 worker defaults live in
   a `DEFAULT_MODELS` constant; the wizard pre-fills them; the file
   always carries explicit values.
 - **Architect not included** — the user's Claude Code main session is
@@ -202,7 +209,7 @@ read layer (read-failure → file-level fallback per D4).
 | Field | Type | Rules |
 |---|---|---|
 | `schema_version` | int | Must be `1` for v0.0.3. Read-time rejection if absent or different; save-time rejection if the API caller claims another version. |
-| `roles` | map | Keys must be exactly `{pm, senior, junior, documentarian}` — set equality, no extras, no missing. |
+| `roles` | map | Keys must be exactly `{coder, librarian, reviewer, scribe}` — set equality, no extras, no missing. |
 | `roles.<id>.member` | str | Required. Non-empty after whitespace strip. Max 64 chars. No newlines, tabs, or control characters. Unicode allowed. |
 | `roles.<id>.model` | str | Required. Non-empty after strip. Matches `^[a-z0-9][a-z0-9._-]*$`. Max 128 chars. |
 
@@ -210,7 +217,7 @@ read layer (read-failure → file-level fallback per D4).
 
 - **Member alias uniqueness** — two roles cannot share a `member` value
   (case-insensitive, whitespace-trimmed comparison). Save rejected with
-  a clear message ("Alex is already used as the PM's alias").
+  a clear message ("Cody is already used as the coder's alias").
 - **Role-set equality** — the `roles` map's key set must equal the four
   canonical IDs exactly.
 
@@ -242,12 +249,13 @@ read layer (read-failure → file-level fallback per D4).
   config read/write.
 - New: Web UI screens for the wizard, role catalog, member view.
 - New: HTTP API endpoints under the Web UI for read/write of team config.
-- Existing: MCP server `coder` invocation must be able to
-  resolve "what model is bound to role X" by reading the same config. This
-  is a small but real change in the MCP path: today the model is
-  hard-coded / env-driven; in v0.0.3 it comes from the team config. This
-  is the first place v0.0.3 actually affects the MCP runtime — handle with
-  care to honor the no-regression rule.
+- Existing: each MCP worker (`coder`, `librarian`, `reviewer`, `scribe`)
+  must be able to resolve "what model is bound to my role" by reading
+  the same config. This is a small but real change in the MCP path:
+  today the model is hard-coded in `bootstrap/maestro_server.py` per
+  worker; in v0.0.3 it comes from the team config. This is the first
+  place v0.0.3 actually affects the MCP runtime — handle with care to
+  honor the no-regression rule.
 
 ### Failure modes (file level) — MCP-server fallback semantics
 
@@ -256,8 +264,8 @@ states. The MCP server's behavior, decided in pass-2 D4, is:
 
 | State | MCP server behavior | Dispatch log event |
 |---|---|---|
-| Absent | Use v0.0.2 fallback (existing env-driven default model). Dispatch succeeds. | `dispatch.fallback.config_absent` (informational) |
-| Present + valid | Resolve `roles.<role>.model` from `team.yaml`. Dispatch with that model. | normal start/end events (Epic 3) |
+| Absent | Use Epic 5 hard-coded worker defaults (the `DEFAULT_MODELS` constant). Dispatch succeeds. | `dispatch.fallback.config_absent` (informational) |
+| Present + valid | Resolve `roles.<role>.model` from `team.yaml` for the invoked worker. Dispatch with that model. | normal start/end events (Epic 3) |
 | Present + **invalid** | **Refuse the dispatch.** Return a structured error to Claude Code naming the failing field. **No silent fallback.** | `dispatch.refused.config_invalid` with validation detail |
 
 **Why "absent → fallback" but "invalid → refuse" are not symmetric.**
@@ -265,14 +273,14 @@ A user with no `team.yaml` has not opted into v0.0.3 team configuration —
 possibly a v0.0.2 user who hasn't run the wizard yet. Falling back
 honors that intent: zero-regression. A user with an *invalid*
 `team.yaml` has tried to configure a team and gotten it wrong. Silently
-falling back would hide the bug ("why is my Junior using
-claude-sonnet-4-6? I configured deepseek-coder!") and violate D1's
+falling back would hide the bug ("why is my coder using
+deepseek-v4-flash? I configured deepseek-v4-pro!") and violate D1's
 explicit-over-implicit principle. Refusing makes the failure visible
 immediately; the user fixes the file and retries.
 
 **Error message shape on refuse:**
 
-> `team.yaml at .maestro/team.yaml is invalid: roles.junior.model — must match pattern '^[a-z0-9][a-z0-9._-]*$'. Open the Web UI to fix, or edit the file directly.`
+> `team.yaml at .maestro/team.yaml is invalid: roles.coder.model — must match pattern '^[a-z0-9][a-z0-9._-]*$'. Open the Web UI to fix, or edit the file directly.`
 
 The same error is written as a `dispatch.refused.config_invalid` event
 so Epic 3's problem panel surfaces it on next Web UI load.
@@ -289,11 +297,10 @@ either the old file or the new file — never an in-between state.
 - *Partial config (user filled in 2 of 4 roles by hand-editing).* Fails
   D2's strict-completeness rule → invalid → refused. The wizard guarantees
   completeness on every save, so this is only reachable via manual edits.
-- *Role isn't dispatched in v0.0.2/v0.0.3 yet.* Only Junior is dispatched
-  today (`coder`). Other roles in `team.yaml` are ignored at
-  dispatch time and consumed when their corresponding workers exist
-  (post-v0.0.3). They still must be present and valid in the file —
-  D1's strict-completeness rule isn't relaxed.
+- *All four workers are live in v0.0.3.* `coder`, `librarian`,
+  `reviewer`, `scribe` were all registered by Epic 5. Each resolves
+  its own `roles.<self>.model` at dispatch time. No "configured but
+  unused" roles in v0.0.3.
 
 **Two new dispatch-log event types** (`dispatch.fallback.config_absent`
 and `dispatch.refused.config_invalid`) need to be incorporated into the
@@ -305,12 +312,12 @@ PR-sized closed loops. Each PR keeps `main` runnable. Order is the
 dependency order. **Prerequisite**: all of Epic 0 T0.1–T0.4 must be
 landed before T1.1 starts.
 
-- [ ] **T1.1** — Add Pydantic models (`TeamConfig`, `RoleEntry`, `RoleId`) per [ADR-0004](../adr/0004-team-config-format-and-schema.md), plus a `DEFAULT_MODELS` constant sourced from [`architecture.md`](../architecture.md). Pure data model. Unit tests on the validators (D2 rules: regex, length caps, role-set equality, alias uniqueness). (~1.5h)
+- [ ] **T1.1** — Add Pydantic models (`TeamConfig`, `RoleEntry`, `RoleId`) per [ADR-0004](../adr/0004-team-config-format-and-schema.md), plus a `DEFAULT_MODELS` constant sourced from [Epic 5 design 52](52-epic5-worker-fleet-expansion.md). Pure data model. Unit tests on the validators (D2 rules: regex, length caps, role-set equality, alias uniqueness). (~1.5h)
 - [ ] **T1.2** — YAML read/write helpers in `maestro/team/`. Read returns `TeamConfig | None | ValidationError`; write uses `os.replace` for atomic write-then-rename. Wired up by a no-op load from the MCP server's startup path so the module isn't orphaned. Unit tests on round-trip + atomicity. (~1.5h)
 - [ ] **T1.3** — HTTP API endpoints: `GET /api/team` (404 if absent, 200 on valid, 422 with field-map on invalid) and `POST /api/team` (201 on success, 422 on validation error). Unit tests per response code; smoke: curl flow. (~1h)
 - [ ] **T1.4** — Wizard UI: four steps (Welcome / Role tour / Confirm / Done). Inline validation. Cancel/Back semantics. Pre-fills from `architecture.md` defaults on first launch; from existing `team.yaml` on re-entry. Smoke: walk through wizard end-to-end on clean state and on re-entry. (~2h)
 - [ ] **T1.5** — Standing role-catalog view: read-only summary of saved team plus per-row edit. The non-wizard surface for changing one row. Smoke: edit one row, confirm `team.yaml` updated. (~1.5h)
-- [ ] **T1.6** — Wire MCP server's `coder` to resolve Junior's `model` from `team.yaml` per D4: absent → v0.0.2 fallback; valid → use config; invalid → refuse with structured error. Emit `dispatch.fallback.config_absent` and `dispatch.refused.config_invalid` events. Unit tests on all three branches; smoke: clean install with `.env` only still works exactly as v0.0.2. (~1.5h)
+- [ ] **T1.6** — Wire each MCP worker (`coder`, `librarian`, `reviewer`, `scribe`) to resolve its own `model` from `team.yaml` per D4: absent → `DEFAULT_MODELS` fallback; valid → use config; invalid → refuse with structured error. Emit `dispatch.fallback.config_absent` and `dispatch.refused.config_invalid` events. Unit tests on all three branches; smoke: clean install with `.env` only still works exactly as v0.0.2. (~1.5h)
 - [ ] **T1.7** — End-to-end verification PR. Documented manual smoke: wizard → use configured model → break `team.yaml` → refuse cleanly → fix → works. Plus regression: `.env`-only project still works as v0.0.2. (~1h)
 
 ## Acceptance criteria
@@ -319,10 +326,10 @@ landed before T1.1 starts.
   first-launch wizard end-to-end and produce a valid team config.
 - The role catalog standing view reflects the saved config and can edit
   it.
-- A `coder` invocation after team composition uses the model
-  bound to the configured role.
+- A worker invocation (`coder` / `librarian` / `reviewer` / `scribe`)
+  after team composition uses the model bound to the configured role.
 - A `coder` invocation **before** any team composition still
-  works (v0.0.2 fallback path), with a clear log indication that fallback
+  works (`DEFAULT_MODELS` fallback path), with a clear log indication that fallback
   was used.
 - The Architect identity is shown in the catalog but cannot be edited or
   bound to a model.
