@@ -40,3 +40,38 @@ def test_unknown_route_returns_404():
     """GET /does-not-exist returns 404 to confirm no catch-all."""
     response = client.get("/does-not-exist")
     assert response.status_code == 404
+
+
+def test_index_returns_200_html():
+    """GET / returns 200 and content type is text/html."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+
+
+def test_index_contains_chinese_hero_copy():
+    """GET / body contains expected Chinese hero copy strings."""
+    response = client.get("/")
+    body = response.text
+    assert "等待第一支乐章" in body
+    assert "本地 AI 软件团队" in body
+
+
+def test_index_loads_vendored_htmx():
+    """GET / body contains the vendored htmx script path."""
+    response = client.get("/")
+    assert "/static/vendor/htmx.min.js" in response.text
+
+
+def test_index_renders_running_version():
+    """GET / body contains the running version string (maestro.__version__)."""
+    response = client.get("/")
+    assert maestro.__version__ in response.text
+
+
+def test_static_htmx_served():
+    """GET /static/vendor/htmx.min.js returns 200 and JavaScript content type."""
+    response = client.get("/static/vendor/htmx.min.js")
+    assert response.status_code == 200
+    ct = response.headers["content-type"]
+    assert ct.startswith("application/javascript") or ct.startswith("text/javascript")
