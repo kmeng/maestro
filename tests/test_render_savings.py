@@ -206,3 +206,40 @@ def test_atomic_write_basic(tmp_path: Path):
     render_savings.atomic_write(out, "hello")
     assert out.read_text() == "hello"
     assert not out.with_suffix(out.suffix + ".tmp").exists()
+
+
+# ---------------------------------------------------------------------------
+# Supersede chain (T6.5)
+# ---------------------------------------------------------------------------
+
+
+def test_supersede_excludes_original():
+    """Row B with supersedes=A's row_id replaces A in aggregation."""
+    a = _sample_row(row_id="orig-1", task_id=None, issue_number=None)
+    b = _sample_row(
+        row_id="fix-1",
+        task_id="T6.7",
+        issue_number=63,
+        supersedes="orig-1",
+    )
+    survivors = render_savings.filter_superseded([a, b])
+    assert len(survivors) == 1
+    assert survivors[0]["row_id"] == "fix-1"
+    assert survivors[0]["task_id"] == "T6.7"
+
+
+def test_supersede_chain_keeps_only_latest():
+    """A → B → C: only C survives filter (transitive masking)."""
+    a = _sample_row(row_id="a")
+    b = _sample_row(row_id="b", supersedes="a")
+    c = _sample_row(row_id="c", supersedes="b")
+    survivors = render_savings.filter_superseded([a, b, c])
+    assert {r["row_id"] for r in survivors} == {"c"}
+
+
+def test_supersede_with_unknown_target_keeps_supersede_row():
+    """If supersedes points at non-existent row_id, supersede row stays."""
+    b = _sample_row(row_id="b", supersedes="ghost")
+    survivors = render_savings.filter_superseded([b])
+    assert len(survivors) == 1
+    assert survivors[0]["row_id"] == "b"
