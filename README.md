@@ -6,6 +6,8 @@ Maestro is an open-source framework that turns Claude Code into the conductor of
 
 The result: software development at roughly **10–20% the cost** of a pure flagship-model workflow, with quality gates that catch when the cheap models get it wrong.
 
+> See [docs/savings.md](docs/savings.md) for the measured cost evidence backing this claim.
+
 ---
 
 ## Why Maestro
