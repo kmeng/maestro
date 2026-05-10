@@ -112,7 +112,7 @@ def test_emit_writes_one_row_per_successful_dispatch(server, monkeypatch, tmp_pa
 # ============================================================
 
 
-def test_emit_records_task_id_when_env_set(server, monkeypatch, tmp_path):
+def test_emit_records_task_id_when_env_set(server, monkeypatch, tmp_path, recwarn):
     monkeypatch.setenv("MAESTRO_CURRENT_TASK", "T6.2")
     monkeypatch.setenv("MAESTRO_CURRENT_ISSUE", "58")
     mock = AsyncMock(return_value=_mock_resp(_valid_librarian_json(), total_tokens=5))
@@ -123,6 +123,11 @@ def test_emit_records_task_id_when_env_set(server, monkeypatch, tmp_path):
     row = _read_rows(tmp_path / "dispatch-log.jsonl")[0]
     assert row["task_id"] == "T6.2"
     assert row["issue_number"] == 58
+
+    # T6.8 added: env-var path now warns deprecation (one-shot per process).
+    deps = [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
+    assert len(deps) == 1
+    assert "MAESTRO_CURRENT_TASK" in str(deps[0].message)
 
 
 def test_emit_records_null_task_when_env_unset(server, monkeypatch, tmp_path):
@@ -262,3 +267,149 @@ def test_seq_per_task_tool_combination_independent(server, monkeypatch, tmp_path
     # Both should have seq=1 because (task,tool) keys differ
     assert rows[0]["row_id"].endswith("T0.4-librarian-1")
     assert rows[1]["row_id"].endswith("T0.4-coder-1")
+
+
+# ============================================================
+# Attribution precedence chain (T6.8 / ADR-0011)
+# ============================================================
+
+
+def test_emit_uses_explicit_param(server, monkeypatch, tmp_path):
+    """Explicit task_id/issue_number on dispatch wins over env var."""
+    monkeypatch.setenv("MAESTRO_CURRENT_TASK", "T_ENV")
+    monkeypatch.setenv("MAESTRO_CURRENT_ISSUE", "999")
+    mock = AsyncMock(return_value=_mock_resp(_valid_librarian_json(), total_tokens=5))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock)
+
+    asyncio.run(server._librarian_impl({
+        "query": "q",
+        "document_text": "d",
+        "task_id": "T6.8",
+        "issue_number": 64,
+    }))
+
+    row = _read_rows(tmp_path / "dispatch-log.jsonl")[0]
+    assert row["task_id"] == "T6.8"
+    assert row["issue_number"] == 64
+
+
+def test_emit_partial_param_no_backfill(server, monkeypatch, tmp_path):
+    """Passing only task_id does NOT backfill issue_number from env."""
+    monkeypatch.setenv("MAESTRO_CURRENT_ISSUE", "999")
+    mock = AsyncMock(return_value=_mock_resp(_valid_librarian_json(), total_tokens=1))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock)
+
+    asyncio.run(server._librarian_impl({
+        "query": "q",
+        "document_text": "d",
+        "task_id": "T6.8",
+    }))
+
+    row = _read_rows(tmp_path / "dispatch-log.jsonl")[0]
+    assert row["task_id"] == "T6.8"
+    assert row["issue_number"] is None  # NOT 999
+
+
+def test_emit_env_warns_deprecation(server, monkeypatch, tmp_path, recwarn):
+    """First env-var-driven dispatch emits DeprecationWarning."""
+    monkeypatch.setenv("MAESTRO_CURRENT_TASK", "T_ENV")
+    mock = AsyncMock(return_value=_mock_resp(_valid_librarian_json(), total_tokens=1))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock)
+
+    asyncio.run(server._librarian_impl({"query": "q", "document_text": "d"}))
+
+    deps = [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
+    assert len(deps) == 1
+    assert "MAESTRO_CURRENT_TASK" in str(deps[0].message)
+
+
+def test_emit_env_warning_one_shot(server, monkeypatch, tmp_path, recwarn):
+    """Subsequent env-driven dispatches in the same process do not warn."""
+    monkeypatch.setenv("MAESTRO_CURRENT_TASK", "T_ENV")
+    mock = AsyncMock(return_value=_mock_resp(_valid_librarian_json(), total_tokens=1))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock)
+
+    for _ in range(3):
+        asyncio.run(server._librarian_impl({"query": "q", "document_text": "d"}))
+
+    deps = [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
+    assert len(deps) == 1
+
+
+def test_emit_branch_inference(server, monkeypatch, tmp_path):
+    """When no param + no env, a branch matching the convention infers issue_number."""
+    fake = MagicMock(returncode=0, stdout="feature/64-retire-begin-task\n")
+    monkeypatch.setattr(server.subprocess, "run", lambda *a, **kw: fake)
+
+    mock = AsyncMock(return_value=_mock_resp(_valid_librarian_json(), total_tokens=1))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock)
+
+    asyncio.run(server._librarian_impl({"query": "q", "document_text": "d"}))
+
+    row = _read_rows(tmp_path / "dispatch-log.jsonl")[0]
+    assert row["task_id"] is None
+    assert row["issue_number"] == 64
+
+
+def test_emit_branch_inference_unmatched(server, monkeypatch, tmp_path):
+    """A branch like wip/64-foo does NOT match; row is unattributed."""
+    fake = MagicMock(returncode=0, stdout="wip/64-foo\n")
+    monkeypatch.setattr(server.subprocess, "run", lambda *a, **kw: fake)
+
+    mock = AsyncMock(return_value=_mock_resp(_valid_librarian_json(), total_tokens=1))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock)
+
+    asyncio.run(server._librarian_impl({"query": "q", "document_text": "d"}))
+
+    row = _read_rows(tmp_path / "dispatch-log.jsonl")[0]
+    assert row["task_id"] is None
+    assert row["issue_number"] is None
+
+
+def test_emit_unattributed_when_subprocess_fails(server, monkeypatch, tmp_path):
+    """Subprocess failure (no git, OSError) falls through to unattributed."""
+    def _raise(*a, **kw):
+        raise OSError("no git binary")
+    monkeypatch.setattr(server.subprocess, "run", _raise)
+
+    mock = AsyncMock(return_value=_mock_resp(_valid_librarian_json(), total_tokens=1))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock)
+
+    asyncio.run(server._librarian_impl({"query": "q", "document_text": "d"}))
+
+    row = _read_rows(tmp_path / "dispatch-log.jsonl")[0]
+    assert row["task_id"] is None
+    assert row["issue_number"] is None
+
+
+def test_branch_re_patterns(server):
+    """Regex matches feature/fix/refactor/docs only; rejects wip and missing N."""
+    # Match
+    assert server._BRANCH_RE.match("feature/64-x").group(1) == "64"
+    assert server._BRANCH_RE.match("fix/123-y").group(1) == "123"
+    assert server._BRANCH_RE.match("refactor/9-z").group(1) == "9"
+    assert server._BRANCH_RE.match("docs/1-w").group(1) == "1"
+    # No match
+    assert server._BRANCH_RE.match("wip/64-x") is None
+    assert server._BRANCH_RE.match("feature/abc") is None
+    assert server._BRANCH_RE.match("main") is None
+    assert server._BRANCH_RE.match("v0.0.3") is None
+
+
+def test_scribe_attribution_uses_existing_issue_number(server, monkeypatch, tmp_path):
+    """Scribe's required issue_number doubles as attribution; no extra param needed."""
+    mock = AsyncMock(return_value=_mock_resp(_valid_scribe_json(), total_tokens=1))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock)
+
+    asyncio.run(server._scribe_impl({
+        "diff": "+x",
+        "issue_number": 64,
+        "issue_title": "t",
+        "issue_body": "b",
+        "convention": "c",
+        "task_id": "T6.8",
+    }))
+
+    row = _read_rows(tmp_path / "dispatch-log.jsonl")[0]
+    assert row["task_id"] == "T6.8"
+    assert row["issue_number"] == 64

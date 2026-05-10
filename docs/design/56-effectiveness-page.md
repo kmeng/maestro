@@ -165,21 +165,35 @@ dependency.
 
 ### 3.2 task_id / issue_number sourcing
 
-The dispatcher does not currently know which task it is being run
-under. Two options:
+> **Updated 2026-05-10 (T6.8 / ADR-0011)**: original (a) decision
+> superseded. Env-var path proved friction-heavy for shipped users
+> and silently lossy for dogfooding (forget to source → silently
+> unattributed). New design uses a precedence chain anchored on
+> dispatch parameters; full rationale in ADR-0011 and
+> `docs/design/64-retire-begin-task.md`.
 
-- **(a)** Read from a session-scoped env var the orchestrator sets
-  before dispatching (`MAESTRO_CURRENT_TASK=T0.4`,
-  `MAESTRO_CURRENT_ISSUE=22`). Lightweight; orchestrator
-  responsibility.
-- **(b)** Pass as keyword arguments through the MCP tool call.
-  Heavier; requires schema changes to all four worker tools.
+Attribution is resolved per dispatch via this precedence chain
+(stop at first non-None):
 
-**Decision**: (a). The orchestrator already has the task ID in
-context (it just opened the task issue at session start) and sets
-the env var once per task. Workers stay schema-clean. If the env
-var is unset, the row records `task_id=null` and is shown in a
-"unattributed" footnote on the savings page.
+1. **Explicit parameter** — `task_id` (string) and `issue_number`
+   (int) on the worker MCP tool call. Optional on coder / librarian
+   / reviewer; for scribe, the existing required `issue_number`
+   doubles as attribution. Partial-friendly: passing only one of
+   the two does NOT backfill the other from env or branch.
+2. **Env var (deprecated)** — `MAESTRO_CURRENT_TASK` /
+   `MAESTRO_CURRENT_ISSUE`, kept for back-compat through v0.0.3;
+   first use per process emits `DeprecationWarning`. Removed in
+   v0.0.4.
+3. **Git branch inference** — server parses
+   `(feature|fix|refactor|docs)/<n>-<slug>`; only `issue_number`
+   inferable.
+4. **Unattributed** — both `None`. Row recorded with `noattr` in
+   `row_id`; surfaced in renderer's "unattributed" footnote.
+
+The orchestrator (Claude Code main session) is expected to pass
+parameters in the common dogfooding case — it already knows the
+issue per implementation-start protocol. Branch fallback exists
+for ad-hoc dispatches and shipped general-user contexts.
 
 ### 3.3 Banner parity (T6.1)
 
