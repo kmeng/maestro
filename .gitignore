@@ -28,6 +28,10 @@ credentials*
 # Maestro runtime
 .maestro/
 *.jsonl
+# Exception: the dispatch-log audit trail is part of the project (Epic 6 D4 /
+# ADR-0010) — committed so anyone can git-clone + run the renderer + reproduce
+# docs/savings.md byte-for-byte.
+!docs/data/dispatch-log.jsonl
 
 # Editors / OS
 .vscode/
