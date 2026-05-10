@@ -1,0 +1,24 @@
+<h2>团队配置确认</h2>
+<p>请确认以下配置无误，然后保存。</p>
+<table>
+    <tr>
+        <th>角色</th>
+        <th>成员名</th>
+        <th>模型</th>
+    </tr>
+    {% for role in role_order %}
+    <tr>
+        <td>{{ role_titles[role] }}</td>
+        <td>{{ values[role]['member'] }}</td>
+        <td>{{ values[role]['model'] }}</td>
+    </tr>
+    {% endfor %}
+</table>
+<form>
+    {% for role in role_order %}
+    <input type="hidden" name="member_{{ role }}" value="{{ values[role]['member'] }}">
+    <input type="hidden" name="model_{{ role }}" value="{{ values[role]['model'] }}">
+    {% endfor %}
+    <button hx-post="/wizard/save" hx-include="closest form" hx-target="#wizard-container">保存</button>
+    <button hx-post="/wizard/step3" hx-include="closest form" hx-target="#wizard-container">返回修改</button>
+</form>
