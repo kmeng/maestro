@@ -4,6 +4,22 @@
 **Date**: 2026-05-08
 **Issue**: #13
 
+## Revisions
+
+- **2026-05-10** — Realigned the canonical role identifier set and default
+  models with Epic 5's actual worker fleet ([design 52](../design/52-epic5-worker-fleet-expansion.md),
+  [ADR-0008](0008-worker-role-naming-and-io-conventions.md)).
+  Old: `{pm, senior, junior, documentarian}` with `claude-sonnet-4-6 /
+  deepseek-coder / qwen-plus` defaults. New: `{coder, librarian,
+  reviewer, scribe}` with `deepseek-v4-pro / deepseek-v4-flash`
+  defaults. Why: the old set described a hypothetical product team that
+  was never implemented; the new set is the four MCP workers actually
+  registered in `bootstrap/maestro_server.py` since Epic 5. `team.yaml`
+  exists to let users configure these workers, so the schema must name
+  them. The original 1-role:1-member structure, the file location, the
+  Pydantic-models-as-contract decision, and the file-level fallback
+  policy are all unchanged.
+
 ## Context
 
 ADR-0003 placed team configuration at `<project-root>/.maestro/team.yaml`.
@@ -40,18 +56,18 @@ see it; some users will hand-edit it. It is also primarily Web-UI-written.
 schema_version: 1
 
 roles:
-  pm:
-    member: Alex
-    model: claude-sonnet-4-6
-  senior:
-    member: Sam
-    model: claude-sonnet-4-6
-  junior:
-    member: Jamie
-    model: deepseek-coder
-  documentarian:
-    member: Drew
-    model: qwen-plus
+  coder:
+    member: Cody
+    model: deepseek-v4-pro
+  librarian:
+    member: Lily
+    model: deepseek-v4-flash
+  reviewer:
+    member: Rae
+    model: deepseek-v4-pro
+  scribe:
+    member: Sage
+    model: deepseek-v4-flash
 ```
 
 ### Schema rules
@@ -59,16 +75,17 @@ roles:
 - **`schema_version`** is required. v0.0.3 ships version `1`. Future
   schema changes increment this and ship a migrator.
 - **`roles`** is a map keyed by role identifier. The four canonical
-  identifiers are `pm`, `senior`, `junior`, `documentarian`. All four
-  are required.
+  identifiers are `coder`, `librarian`, `reviewer`, `scribe` —
+  matching the four MCP workers registered in
+  `bootstrap/maestro_server.py`. All four are required.
 - Each role entry has exactly two fields, both required:
   - **`member`** — a string, the user-chosen alias.
   - **`model`** — a string, an explicit model identifier (no defaults
     in the file; the Web UI pre-fills the
-    [`architecture.md`](../architecture.md) defaults but always writes
+    Epic 5 worker defaults but always writes
     the value explicitly).
 - The map structure enforces 1 role : 1 member at the schema level.
-  Two PMs cannot be expressed in this layout.
+  Two coders cannot be expressed in this layout.
 - The Architect role is **not** in the schema. It is the user's Claude
   Code main session and is not configurable here.
 
@@ -80,13 +97,16 @@ equivalent — exact path resolved when implementation lands):
 - `TeamConfig` — top-level model with `schema_version: int` and
   `roles: dict[RoleId, RoleEntry]`.
 - `RoleEntry` — `member: str`, `model: str`.
-- `RoleId` — Literal of the four identifiers.
+- `RoleId` — Literal of the four identifiers (`coder`, `librarian`,
+  `reviewer`, `scribe`).
 
 The same Pydantic models serve:
 
 - Web UI request/response schemas (Pydantic + FastAPI from ADR-0001).
 - YAML round-trip (Pydantic dict ↔ `pyyaml`).
-- MCP server's read-and-resolve at dispatch time.
+- MCP server's read-and-resolve at dispatch time — each worker
+  (coder / librarian / reviewer / scribe) resolves its own
+  `roles.<role>.model` when invoked.
 
 One source of truth for the schema, in code.
 
@@ -103,12 +123,21 @@ exchange for `pyyaml`'s simplicity.
 Defaults live in code, not in the file:
 
 - A `DEFAULT_MODELS: dict[RoleId, str]` constant, sourced from
-  `architecture.md`'s role-to-model bindings.
+  Epic 5's worker fleet design ([design 52 §103-285](../design/52-epic5-worker-fleet-expansion.md)).
+  As of 2026-05-10:
+  ```python
+  DEFAULT_MODELS = {
+      "coder": "deepseek-v4-pro",
+      "librarian": "deepseek-v4-flash",
+      "reviewer": "deepseek-v4-pro",
+      "scribe": "deepseek-v4-flash",
+  }
+  ```
 - The wizard pre-fills these when first creating `team.yaml`.
 - The file always carries explicit `model:` values after first save —
   no implicit "use default" semantics.
 
-If `architecture.md`'s defaults change in a future Maestro version,
+If the worker fleet's defaults change in a future Maestro version,
 existing user `team.yaml` files are unaffected (their values are
 explicit). The wizard for new users gets the new defaults.
 

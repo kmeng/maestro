@@ -2,7 +2,7 @@
 
 > Orchestrate a heterogeneous AI software team. Pay junior prices for senior-level output.
 
-Maestro is an open-source framework that turns Claude Code into the conductor of a complete AI software development team. Instead of burning top-tier model tokens on every task, Maestro routes work to the right specialist at the right cost — Opus for architecture, Sonnet for complex implementation, DeepSeek for boilerplate, Qwen for documentation.
+Maestro is an open-source framework that turns Claude Code into the conductor of a complete AI software development team. Instead of burning top-tier model tokens on every task, Maestro routes work to the right specialist at the right cost — Opus for architecture; cheap models (DeepSeek v4-pro / v4-flash today, more providers pluggable) for implementation, document extraction, code review, and commit drafting.
 
 The result: software development at roughly **10–20% the cost** of a pure flagship-model workflow, with quality gates that catch when the cheap models get it wrong.
 
@@ -44,15 +44,15 @@ Maestro runs as an MCP server registered with Claude Code. Your Claude Code sess
 └──────────────────────────────────────────────────┘
         ↓             ↓             ↓             ↓
 ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-│ Product     │ │ Senior      │ │ Junior      │ │ Documentar- │
-│ Manager     │ │ Engineer    │ │ Engineer    │ │ ian         │
+│ Coder       │ │ Librarian   │ │ Reviewer    │ │ Scribe      │
 │             │ │             │ │             │ │             │
-│ Sonnet      │ │ Sonnet      │ │ DeepSeek    │ │ Qwen        │
-│             │ │             │ │ -Coder      │ │             │
-│ Translates  │ │ Complex     │ │ Boilerplate │ │ Docs,       │
-│ business    │ │ logic,      │ │ CRUD,       │ │ comments,   │
-│ goals into  │ │ debugging,  │ │ scaffolds,  │ │ summaries,  │
-│ specs       │ │ reviews     │ │ tests       │ │ explanations│
+│ DeepSeek    │ │ DeepSeek    │ │ DeepSeek    │ │ DeepSeek    │
+│ v4-pro      │ │ v4-flash    │ │ v4-pro      │ │ v4-flash    │
+│             │ │             │ │             │ │             │
+│ Implements  │ │ Extracts    │ │ Reviews     │ │ Drafts      │
+│ from a      │ │ task-       │ │ code        │ │ commits     │
+│ precise     │ │ relevant    │ │ against     │ │ and PR      │
+│ spec        │ │ context     │ │ a spec      │ │ bodies      │
 └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘
 ```
 
@@ -64,35 +64,35 @@ The conductor never disappears — every dispatch and every result flows back th
 
 Each role exists because it does something the others can't do as well — or as cheaply.
 
-### 🎯 Product Manager (Sonnet)
-
-Translates fuzzy business goals into concrete product specifications. When you say "I want users to be able to share workouts with friends," the PM produces user stories, acceptance criteria, edge cases, and the data model implications — before a single line of code gets written.
-
-**Use when**: You start with intent, not specs. Requirements need stakeholder framing. You're not sure what to build yet.
-
 ### 🏛️ Architect (Opus, the conductor itself)
 
 This is your Claude Code main session. Owns architectural decisions, cross-cutting concerns, and final integration. The Architect doesn't write boilerplate — it decides what should exist and reviews what comes back.
 
 **Always on**. This is your interface.
 
-### 🛠️ Senior Engineer (Sonnet)
+### ⚙️ Coder (DeepSeek v4-pro)
 
-Handles complex implementation that requires understanding context across files: tricky refactors, debugging, code review, security-sensitive logic.
+Implements code from a precise specification. Tests, validators, CRUD endpoints, data classes, scaffolds, focused refactors. Fast and surprisingly competent when given a clear spec; the Architect's job is to provide one.
 
-**Use when**: The task requires reasoning, not just execution.
+**Use when**: The spec is concrete and the work is mostly mechanical.
 
-### ⚙️ Junior Engineer (DeepSeek-Coder)
+### 📚 Librarian (DeepSeek v4-flash)
 
-Cranks out well-specified code: CRUD endpoints, data classes, config files, standard React components, simple algorithms. Fast, cheap, surprisingly competent when given a clear spec.
+Reads long reference documents (design docs, ADRs, journals) and extracts the parts relevant to a query, with hard constraints quoted verbatim. Routing the document via `file_path` keeps it out of the orchestrator's expensive context entirely.
 
-**Use when**: The spec is precise and the work is mostly mechanical.
+**Use when**: You'd otherwise be reading a 14 KB design doc to find three constraints.
 
-### 📝 Documentarian (Qwen)
+### 🔍 Reviewer (DeepSeek v4-pro)
 
-Writes docstrings, READMEs, API docs, code comments, and plain-language summaries of long logs or files.
+Judges whether code matches a spec — pass / concerns / fail, with a structured findings list. Not a refactoring or style review; the Reviewer's job is fidelity to the spec, not improvement of the code.
 
-**Use when**: The output is prose, not code.
+**Use when**: Worker code arrived and you need a second opinion on whether it satisfies the requirements.
+
+### 📝 Scribe (DeepSeek v4-flash)
+
+Drafts commit messages and PR bodies from a `git diff` plus the issue body, following the project's Conventional Commits + co-author conventions. Routine drafting from structured input.
+
+**Use when**: A change is ready to commit and you'd otherwise hand-type the message.
 
 ---
 
@@ -132,18 +132,18 @@ providers:
     api_key: ${ANTHROPIC_API_KEY}  # for Sonnet workers (optional)
 
 team:
-  product_manager:
-    provider: anthropic
-    model: claude-sonnet-4-6
-  senior_engineer:
-    provider: anthropic
-    model: claude-sonnet-4-6
-  junior_engineer:
+  coder:
     provider: deepseek
-    model: deepseek-coder
-  documentarian:
-    provider: qwen
-    model: qwen-plus
+    model: deepseek-v4-pro
+  librarian:
+    provider: deepseek
+    model: deepseek-v4-flash
+  reviewer:
+    provider: deepseek
+    model: deepseek-v4-pro
+  scribe:
+    provider: deepseek
+    model: deepseek-v4-flash
 
 quality_gates:
   auto_review_threshold_loc: 50
@@ -165,9 +165,10 @@ Just talk to Claude Code normally. Maestro tools are available as `mcp__maestro_
 
 ```markdown
 This project uses Maestro. Delegate execution-heavy work to the team:
-- Specs and user stories → @product_manager
-- Boilerplate, scaffolds, tests → @junior_engineer
-- Documentation → @documentarian
+- Spec-driven implementation → coder
+- Long-doc context extraction → librarian
+- Code review against spec → reviewer
+- Commit messages and PR bodies → scribe
 - Reserve your own attention for architecture, integration, and review.
 ```
 
@@ -183,10 +184,10 @@ You: Build a REST API for a workout tracker. Users can log workouts,
 
 Architect (you, in Claude Code):
   Let me first get the requirements straight.
-  → Dispatching to product_manager...
+  → Dispatching to librarian to extract the spec hard constraints...
 
-  [Maestro: product_manager (sonnet) — 4.2s, $0.008]
-  Returned 3 user stories, 7 acceptance criteria, data model sketch.
+  [Maestro: librarian (deepseek-v4-flash) — 2.4s, $0.001]
+  Returned 3 hard constraints + section-by-section summary.
 
   Reviewing the spec... I'll structure this as: users, workouts,
   follows, feed. Let me write the data model and tests first.
@@ -194,21 +195,21 @@ Architect (you, in Claude Code):
   [Architect writes models.py and test_workouts.py — Opus]
 
   Now dispatching the routine implementation:
-  → Dispatching to junior_engineer (3 endpoints)...
+  → Dispatching to coder (3 endpoints, 1 dispatch)...
 
-  [Maestro: junior_engineer (deepseek) — 6.1s, $0.002]
+  [Maestro: coder (deepseek-v4-pro) — 6.1s, $0.002]
   Returned 3 endpoint handlers. Concerns: "Used basic auth check;
   recommend reviewing if more granular permissions needed."
 
   Running tests... 7/7 pass. Reviewing the auth concern — the spec
-  is fine for v1, deferring. Now generating docs:
+  is fine for v1, deferring. Drafting the commit:
 
-  → Dispatching to documentarian...
+  → Dispatching to scribe...
 
-  [Maestro: documentarian (qwen) — 2.8s, $0.001]
-  Returned OpenAPI annotations and README section.
+  [Maestro: scribe (deepseek-v4-flash) — 2.8s, $0.001]
+  Returned commit message + PR body draft.
 
-  Done. Total: $0.011, 13.1s.
+  Done. Total: $0.004, 11.3s.
   Equivalent pure-Opus run estimate: ~$0.18.
 ```
 
@@ -221,7 +222,7 @@ Every step shows what was dispatched, what came back, what it cost, and how the 
 Maestro is in early development. The MVP (Phase 1) is functional and used daily by the maintainers; production-readiness and broader provider support are in progress.
 
 - ✅ MCP server with 4 core roles
-- ✅ DeepSeek, Qwen, Anthropic providers
+- ✅ DeepSeek (v4-pro / v4-flash) providers; Anthropic + Qwen pluggable
 - ✅ Structured reasoning + concerns from every worker
 - ✅ Audit logging to JSONL
 - 🔄 Test-driven dispatch (in progress)
@@ -257,7 +258,7 @@ No. Maestro uses Claude Code as its orchestrator via the standard MCP protocol �
 Because Claude Code's UI, permission system, file diffs, worktree integration, and conversation memory are already excellent. Reinventing that stack is a multi-year project. MCP lets Maestro inherit all of it for free.
 
 **What if I want to use OpenAI / Gemini / local models?**
-Any provider with an OpenAI-compatible endpoint works out of the box. Add it to `config.yaml`. Provider-specific quirks (Gemini's safety settings, Ollama's local serving) are documented in `docs/providers.md`.
+Any provider with an OpenAI-compatible endpoint works out of the box. Set the worker's `model:` in your `team.yaml` to the provider's model ID. Provider-specific quirks (Gemini's safety settings, Ollama's local serving) are documented in `docs/providers.md`.
 
 **Can I add my own roles?**
 Yes. Roles are defined as YAML + a system prompt template. See `docs/custom-roles.md`. Sharing role configs with the community is encouraged — eventually we want a role marketplace.
