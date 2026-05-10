@@ -60,6 +60,14 @@ from maestro.env_loader import load_credentials  # noqa: E402
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_credentials(project_root=_PROJECT_ROOT)
 
+# T1.2 — startup probe. Calling load_team_config here guarantees the
+# maestro.team.io module isn't orphaned and surfaces import-time
+# breakage early. Result is discarded; T1.6 wires real per-worker
+# resolution.
+from maestro.team.io import load_team_config as _probe_load_team_config  # noqa: E402
+
+_probe_load_team_config(_PROJECT_ROOT)
+
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 if not DEEPSEEK_API_KEY:
     project_env = _PROJECT_ROOT / ".env"
