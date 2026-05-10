@@ -1,17 +1,42 @@
 """Web UI HTTP server entry point.
 
 Exposes:
+- GET /        – hero page rendered via Jinja2 template
 - GET /health  – liveness probe for ops
 - GET /version – returns the running version string
+- /static/*    – serves vendored static assets (htmx, future CSS/JS)
 
-Page rendering, launcher, htmx, and port-conflict handling are out of scope (T0.4 / T0.5).
+Launcher and port-conflict handling are out of scope (T0.5).
 """
 
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 import maestro
 
 app = FastAPI(title="Maestro Web UI", version=maestro.__version__)
+
+_STATIC_DIR = Path(__file__).parent / "static"
+_TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
+# Vendored htmx + future static assets; no CDN at runtime per ADR-0002
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request):
+    """Render the hero page with running version."""
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {"version": maestro.__version__},
+    )
 
 
 @app.get("/health")
