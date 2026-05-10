@@ -114,6 +114,28 @@ def read_rows(path: Path) -> list[dict]:
 # 3. compute_costs
 # ---------------------------------------------------------------------------
 
+def filter_superseded(rows: list[dict]) -> list[dict]:
+    """Drop rows whose row_id is referenced by some other row's `supersedes`.
+
+    Per design 56 §2.1 + ADR-0010: the dispatch log is append-only, so when
+    a row's data needs correcting (e.g., backfilling task attribution that
+    the server didn't have at dispatch time), the corrected row references
+    the original via `supersedes: <row_id>`. Both rows stay in the file
+    (audit trail preserves history) but only the latest one in any chain
+    is included in aggregation.
+
+    Multi-step chains (X1 supersedes original, X2 supersedes X1) work
+    transitively: superseded_ids collects every row referenced by some
+    other row's `supersedes`, so X2 is the only survivor.
+    """
+    superseded_ids = {
+        r["supersedes"]
+        for r in rows
+        if r.get("supersedes")
+    }
+    return [r for r in rows if r.get("row_id") not in superseded_ids]
+
+
 def compute_costs(row: dict) -> dict[str, float] | None:
     """Worker + Opus-baseline costs in USD; None when model unknown.
 
@@ -443,6 +465,7 @@ def atomic_write(path: Path, content: str) -> None:
 
 def main() -> None:
     rows = read_rows(JSONL_PATH)
+    rows = filter_superseded(rows)
     for row in rows:
         row["_cost"] = compute_costs(row)
 
