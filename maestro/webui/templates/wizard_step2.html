@@ -1,0 +1,30 @@
+<h2>配置团队成员</h2>
+<form>
+    {% if top_error %}
+    <div class="error-banner">{{ top_error }}</div>
+    {% endif %}
+    {% for role in role_order %}
+    <fieldset>
+        <legend>{{ role_titles[role] }}</legend>
+        <label>成员名
+            <input name="member_{{ role }}" value="{{ values[role]['member'] }}"
+                   hx-post="/wizard/validate-field"
+                   hx-trigger="blur"
+                   hx-vals='{"role": "{{ role }}", "field": "member"}'
+                   hx-target="#error-{{ role }}-member">
+        </label>
+        <span id="error-{{ role }}-member" class="field-error">{{ field_errors.get((role,'member'), '') }}</span>
+        <label>模型
+            <input name="model_{{ role }}" value="{{ values[role]['model'] }}"
+                   hx-post="/wizard/validate-field"
+                   hx-trigger="blur"
+                   hx-vals='{"role": "{{ role }}", "field": "model"}'
+                   hx-target="#error-{{ role }}-model">
+        </label>
+        <span id="error-{{ role }}-model" class="field-error">{{ field_errors.get((role,'model'), '') }}</span>
+    </fieldset>
+    {% endfor %}
+    <button hx-post="/wizard/step2-back" hx-target="#wizard-container">上一步</button>
+    <a href="/" class="button">取消</a>
+    <button hx-post="/wizard/step3" hx-include="closest form" hx-target="#wizard-container">下一步</button>
+</form>
