@@ -31,7 +31,7 @@ import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional, Union
 
 from openai import AsyncOpenAI
 from mcp.server import Server
@@ -503,6 +503,53 @@ async def job_status_handler(arguments: dict) -> list[TextContent]:
 
 
 # ============================================================
+# T1.6 — per-dispatch model resolution from team.yaml
+#
+# Each worker handler resolves its model at call time via team.yaml:
+#   absent  → DEFAULT_MODELS fallback (zero-regression v0.0.2 path)
+#   valid   → roles.<self>.model
+#   invalid → refuse the dispatch with a structured error
+#
+# Events are appended best-effort to logs/team_events.jsonl as a stub;
+# T3.1 ships proper Pydantic event models that supersede this format.
+# ============================================================
+
+from maestro.team.resolve import ResolveOk, ResolveRefuse, resolve_role_model
+
+
+def _emit_team_event(event: dict) -> None:
+    """Append a team-resolution event to the dispatch log directory.
+
+    Best-effort: any I/O failure is swallowed (per T1.6 brief — emission
+    must never fail the dispatch). T3.1 will replace this stub.
+    """
+    try:
+        log_path = LOG_DIR / "team_events.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps({**event, "ts": datetime.now().isoformat()}, ensure_ascii=False)
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+
+
+def _resolve_role_or_refuse(role_id: str) -> Union[str, list[TextContent]]:
+    """Resolve which model to dispatch for `role_id`, or return a refuse-response.
+
+    Returns the model string when dispatch should proceed (emitting any
+    fallback event as a side effect). Returns a list[TextContent] when
+    team.yaml is invalid and the dispatch must abort early.
+    """
+    resolution = resolve_role_model(role_id, _PROJECT_ROOT)
+    if isinstance(resolution, ResolveRefuse):
+        _emit_team_event(resolution.event)
+        return [TextContent(type="text", text=resolution.error_message)]
+    if resolution.event is not None:
+        _emit_team_event(resolution.event)
+    return resolution.model
+
+
+# ============================================================
 # Role: coder (formerly cheap_code_gen)
 #
 # Generate code from a structured spec. The worker returns reasoning +
@@ -585,6 +632,12 @@ async def _coder_impl(arguments: dict) -> list[TextContent]:
     if attribution_issue_number is not None and not isinstance(attribution_issue_number, int):
         return [TextContent(type="text", text="ERROR: issue_number must be an integer when provided.")]
 
+    # T1.6 — resolve role's model from team.yaml, or refuse if invalid.
+    model_or_refuse = _resolve_role_or_refuse("coder")
+    if isinstance(model_or_refuse, list):
+        return model_or_refuse
+    model = model_or_refuse
+
     system_prompt = (
         f"You are a precise code generator working as part of an AI software team. "
         f"Generate {language} code that exactly meets the specification. "
@@ -602,7 +655,7 @@ async def _coder_impl(arguments: dict) -> list[TextContent]:
 
     try:
         resp = await deepseek.chat.completions.create(
-            model=MODEL_PRO,
+            model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -626,7 +679,7 @@ async def _coder_impl(arguments: dict) -> list[TextContent]:
     log_dispatch({
         "ts": datetime.now().isoformat(),
         "tool": "coder",
-        "model": MODEL_PRO,
+        "model": model,
         "input": arguments,
         "output": response_text,
         "error": error_msg,
@@ -637,7 +690,7 @@ async def _coder_impl(arguments: dict) -> list[TextContent]:
         task_id=attribution_task_id,
         issue_number=attribution_issue_number,
         tool="coder",
-        model=MODEL_PRO,
+        model=model,
         model_provider="deepseek",
         started_at=start,
         duration=duration,
@@ -649,12 +702,12 @@ async def _coder_impl(arguments: dict) -> list[TextContent]:
         return [TextContent(
             type="text",
             text=(
-                f"ERROR dispatching to coder ({MODEL_PRO}): {error_msg}\n\n"
+                f"ERROR dispatching to coder ({model}): {error_msg}\n\n"
                 f"Suggestion: handle this task yourself or retry."
             )
         )]
 
-    banner = _build_banner("coder", MODEL_PRO, duration, usage["total_tokens"])
+    banner = _build_banner("coder", model, duration, usage["total_tokens"])
     return [TextContent(
         type="text",
         text=f"{banner}\n\n{response_text}",
@@ -915,6 +968,12 @@ async def _librarian_impl(arguments: dict) -> list[TextContent]:
     if attribution_issue_number is not None and not isinstance(attribution_issue_number, int):
         return _error_response("input_validation", "issue_number must be an integer")
 
+    # T1.6 — resolve role's model from team.yaml, or refuse if invalid.
+    model_or_refuse = _resolve_role_or_refuse("librarian")
+    if isinstance(model_or_refuse, list):
+        return model_or_refuse
+    model = model_or_refuse
+
     # The whole point of the role is to keep document_text out of the
     # caller's context — only the worker sees the bytes.
     if file_path:
@@ -951,7 +1010,7 @@ async def _librarian_impl(arguments: dict) -> list[TextContent]:
 
     try:
         resp = await deepseek.chat.completions.create(
-            model=MODEL_FLASH,
+            model=model,
             messages=[
                 {"role": "system", "content": LIBRARIAN_SYSTEM_PROMPT},
                 {"role": "user", "content": f"Query: {query}\n\nDocument:\n{document_text}"},
@@ -976,7 +1035,7 @@ async def _librarian_impl(arguments: dict) -> list[TextContent]:
     log_dispatch({
         "ts": datetime.now().isoformat(),
         "tool": "librarian",
-        "model": MODEL_FLASH,
+        "model": model,
         "input": {
             "file_path": file_path,
             "has_inline_document": bool(arguments.get("document_text")),
@@ -992,7 +1051,7 @@ async def _librarian_impl(arguments: dict) -> list[TextContent]:
         task_id=attribution_task_id,
         issue_number=attribution_issue_number,
         tool="librarian",
-        model=MODEL_FLASH,
+        model=model,
         model_provider="deepseek",
         started_at=start,
         duration=duration,
@@ -1031,7 +1090,7 @@ async def _librarian_impl(arguments: dict) -> list[TextContent]:
         )
 
     parsed["_banner"] = _build_banner(
-        "librarian", MODEL_FLASH, duration, usage["total_tokens"]
+        "librarian", model, duration, usage["total_tokens"]
     )
     return [TextContent(
         type="text",
@@ -1211,6 +1270,12 @@ async def _reviewer_impl(arguments: dict) -> list[TextContent]:
     if attribution_issue_number is not None and not isinstance(attribution_issue_number, int):
         return _error_response("input_validation", "issue_number must be an integer")
 
+    # T1.6 — resolve role's model from team.yaml, or refuse if invalid.
+    model_or_refuse = _resolve_role_or_refuse("reviewer")
+    if isinstance(model_or_refuse, list):
+        return model_or_refuse
+    model = model_or_refuse
+
     user_prompt = f"Language: {language}\n\nSpec:\n{spec}\n\nCode:\n{code}"
 
     start = time.time()
@@ -1221,7 +1286,7 @@ async def _reviewer_impl(arguments: dict) -> list[TextContent]:
 
     try:
         resp = await deepseek.chat.completions.create(
-            model=MODEL_PRO,
+            model=model,
             messages=[
                 {"role": "system", "content": REVIEWER_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
@@ -1247,7 +1312,7 @@ async def _reviewer_impl(arguments: dict) -> list[TextContent]:
     log_dispatch({
         "ts": datetime.now().isoformat(),
         "tool": "reviewer",
-        "model": MODEL_PRO,
+        "model": model,
         "input": {
             "spec_chars": len(spec),
             "code_chars": len(code),
@@ -1262,7 +1327,7 @@ async def _reviewer_impl(arguments: dict) -> list[TextContent]:
         task_id=attribution_task_id,
         issue_number=attribution_issue_number,
         tool="reviewer",
-        model=MODEL_PRO,
+        model=model,
         model_provider="deepseek",
         started_at=start,
         duration=duration,
@@ -1283,7 +1348,7 @@ async def _reviewer_impl(arguments: dict) -> list[TextContent]:
         return _error_response("output_schema_invalid", validation_error, raw=parsed)
 
     parsed["_banner"] = _build_banner(
-        "reviewer", MODEL_PRO, duration, usage["total_tokens"]
+        "reviewer", model, duration, usage["total_tokens"]
     )
     return [TextContent(
         type="text",
@@ -1440,6 +1505,12 @@ async def _scribe_impl(arguments: dict) -> list[TextContent]:
         return _error_response("input_validation", "task_id must be a string")
     attribution_issue_number = issue_number  # already validated above
 
+    # T1.6 — resolve role's model from team.yaml, or refuse if invalid.
+    model_or_refuse = _resolve_role_or_refuse("scribe")
+    if isinstance(model_or_refuse, list):
+        return model_or_refuse
+    model = model_or_refuse
+
     user_prompt = (
         f"Issue #{issue_number}: {issue_title}\n\n"
         f"Issue body:\n{issue_body}\n\n"
@@ -1455,7 +1526,7 @@ async def _scribe_impl(arguments: dict) -> list[TextContent]:
 
     try:
         resp = await deepseek.chat.completions.create(
-            model=MODEL_FLASH,
+            model=model,
             messages=[
                 {"role": "system", "content": SCRIBE_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
@@ -1481,7 +1552,7 @@ async def _scribe_impl(arguments: dict) -> list[TextContent]:
     log_dispatch({
         "ts": datetime.now().isoformat(),
         "tool": "scribe",
-        "model": MODEL_FLASH,
+        "model": model,
         "input": {
             "diff_chars": len(diff),
             "issue_number": issue_number,
@@ -1496,7 +1567,7 @@ async def _scribe_impl(arguments: dict) -> list[TextContent]:
         task_id=attribution_task_id,
         issue_number=attribution_issue_number,
         tool="scribe",
-        model=MODEL_FLASH,
+        model=model,
         model_provider="deepseek",
         started_at=start,
         duration=duration,
@@ -1517,7 +1588,7 @@ async def _scribe_impl(arguments: dict) -> list[TextContent]:
         return _error_response("output_schema_invalid", validation_error, raw=parsed)
 
     parsed["_banner"] = _build_banner(
-        "scribe", MODEL_FLASH, duration, usage["total_tokens"]
+        "scribe", model, duration, usage["total_tokens"]
     )
     return [TextContent(
         type="text",
