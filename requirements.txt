@@ -3,3 +3,4 @@ fastapi
 uvicorn
 sse-starlette
 jinja2
+pyyaml
