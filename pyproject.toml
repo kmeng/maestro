@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "maestro"
+version = "0.0.3.dev0"
+description = "Maestro — orchestrates a heterogeneous AI software team via MCP."
+requires-python = ">=3.10"
+readme = "README.md"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "sse-starlette",
+    "jinja2",
+    "pyyaml",
+]
+
+[project.scripts]
+maestro-webui = "maestro.webui.launcher:main"
+
+[tool.setuptools.packages.find]
+include = ["maestro*"]
+exclude = ["tests*", "scripts*", "bootstrap*", "docs*"]
+
+[tool.setuptools.package-data]
+"maestro.webui" = ["templates/*.html", "static/vendor/*"]
