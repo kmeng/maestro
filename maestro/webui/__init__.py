@@ -6,6 +6,7 @@ Exposes:
 - GET /version – returns the running version string
 - /api/team    – team.yaml read/write API (T1.3)
 - /wizard      – team-composition wizard (T1.4)
+- /team        – team config standing view + per-row edit (T1.5)
 - /static/*    – serves vendored static assets (htmx, future CSS/JS)
 
 Launcher and port-conflict handling are out of scope (T0.5).
@@ -20,11 +21,13 @@ from fastapi.templating import Jinja2Templates
 
 import maestro
 from maestro.webui.team_api import router as team_router
+from maestro.webui.team_catalog import router as team_catalog_router
 from maestro.webui.wizard import router as wizard_router
 
 app = FastAPI(title="Maestro Web UI", version=maestro.__version__)
 app.include_router(team_router)
 app.include_router(wizard_router)
+app.include_router(team_catalog_router)
 
 _STATIC_DIR = Path(__file__).parent / "static"
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
