@@ -4,6 +4,7 @@ Exposes:
 - GET /        – hero page rendered via Jinja2 template
 - GET /health  – liveness probe for ops
 - GET /version – returns the running version string
+- /api/team    – team.yaml read/write API (T1.3)
 - /static/*    – serves vendored static assets (htmx, future CSS/JS)
 
 Launcher and port-conflict handling are out of scope (T0.5).
@@ -17,8 +18,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import maestro
+from maestro.webui.team_api import router as team_router
 
 app = FastAPI(title="Maestro Web UI", version=maestro.__version__)
+app.include_router(team_router)
 
 _STATIC_DIR = Path(__file__).parent / "static"
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
