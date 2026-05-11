@@ -223,6 +223,12 @@ async def scaffold_apply(req: ApplyRequest) -> EventSourceResponse:
                     }),
                 }
         # T2.5 contract: upsert_project NEVER raises. No try/except needed.
-        upsert_project(project_root)
+        # Only register when there's actually been a write attempt — empty
+        # plan rows means accepted_paths was empty (or all paths filtered
+        # out as unknown). Registering a project that had zero apply
+        # operations is semantically odd; the UI is supposed to block
+        # this case (design 14 D3) but we defend in the HTTP layer too.
+        if plan.rows:
+            upsert_project(project_root)
 
     return EventSourceResponse(event_generator())

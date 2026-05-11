@@ -283,6 +283,34 @@ def test_apply_filters_to_accepted_paths(client, tmp_path, monkeypatch):
 
 # -- Validation tests ------------------------------------------------------
 
+def test_apply_with_empty_accepted_paths_does_not_register(client, tmp_path, monkeypatch):
+    """Empty accepted_paths → no files processed → upsert_project NOT called.
+
+    Reviewer-flagged concern (T2.6 review round 1): UI should block
+    this case (design 14 D3 — Apply button disabled if all opt-out
+    checkboxes unchecked) but the HTTP layer defends too. Registering
+    a project that had zero apply operations is semantically odd.
+    """
+    _stub_preflight_all_pass(monkeypatch)
+    calls: list[Path] = []
+    monkeypatch.setattr(
+        "maestro.webui.scaffold_api.upsert_project",
+        lambda p: calls.append(p),
+    )
+    body = {
+        "path": str(tmp_path),
+        "mode": "take_over",
+        "accepted_paths": [],  # user opted out of everything
+    }
+    events = _stream_events(client, body)
+    # Stream still emits plan_complete (with 0/0) so the client knows
+    # the request was processed.
+    assert events[-1][0] == "plan_complete"
+    assert events[-1][1] == {"succeeded": 0, "failed": 0}
+    # But upsert was NOT called.
+    assert calls == []
+
+
 def test_plan_request_body_validation(client):
     resp = client.post("/api/scaffold/plan", json={"path": "/tmp"})  # no mode
     assert resp.status_code == 422
