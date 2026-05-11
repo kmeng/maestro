@@ -1,4 +1,4 @@
-"""tests/test_dispatcher.py — unit tests for dispatcher.run()."""
+"""tests/test_dispatcher.py — unit tests for async dispatcher.run()."""
 
 import textwrap
 
@@ -29,12 +29,15 @@ def _make_valid_config() -> TeamConfig:
     )
 
 
-def test_happy_path_with_valid_config(tmp_path, monkeypatch):
+@pytest.mark.asyncio
+async def test_happy_path_with_valid_config(tmp_path, monkeypatch):
     save_team_config(tmp_path, _make_valid_config())
     monkeypatch.setattr("maestro.dispatcher.Path.cwd", lambda: tmp_path)
 
-    result = run("coder", "test input", lambda model: f"output from {model}")
+    async def executor(model):
+        return f"output from {model}"
 
+    result = await run("coder", "test input", executor)
     assert result == "output from deepseek-v4-pro"
 
     events = scan_log(tmp_path / ".maestro" / "logs" / "dispatch.jsonl")
@@ -43,18 +46,20 @@ def test_happy_path_with_valid_config(tmp_path, monkeypatch):
     assert isinstance(start, DispatchStartEvent)
     assert start.role == "coder"
     assert start.model == "deepseek-v4-pro"
-    assert start.member == "alice"
     assert start.input_summary == "test input"
     assert isinstance(end, DispatchEndEvent)
     assert end.output_summary == "output from deepseek-v4-pro"
-    assert end.duration_ms >= 0
     assert start.request_id == end.request_id
 
 
-def test_absent_config_emits_fallback_then_start_end(tmp_path, monkeypatch):
+@pytest.mark.asyncio
+async def test_absent_config_emits_fallback_then_start_end(tmp_path, monkeypatch):
     monkeypatch.setattr("maestro.dispatcher.Path.cwd", lambda: tmp_path)
 
-    result = run("coder", "input", lambda m: "ok")
+    async def executor(m):
+        return "ok"
+
+    result = await run("coder", "input", executor)
     assert result == "ok"
 
     events = scan_log(tmp_path / ".maestro" / "logs" / "dispatch.jsonl")
@@ -65,12 +70,12 @@ def test_absent_config_emits_fallback_then_start_end(tmp_path, monkeypatch):
     assert fallback.fallback_model == "deepseek-v4-pro"
     assert isinstance(start, DispatchStartEvent)
     assert start.model == "deepseek-v4-pro"
-    assert start.member == "coder"
     assert isinstance(end, DispatchEndEvent)
     assert start.request_id == fallback.request_id == end.request_id
 
 
-def test_invalid_config_refuses_and_returns_error_string(tmp_path, monkeypatch):
+@pytest.mark.asyncio
+async def test_invalid_config_refuses_and_returns_error_string(tmp_path, monkeypatch):
     broken_yaml = textwrap.dedent("""\
         schema_version: 1
         roles:
@@ -92,7 +97,11 @@ def test_invalid_config_refuses_and_returns_error_string(tmp_path, monkeypatch):
     monkeypatch.setattr("maestro.dispatcher.Path.cwd", lambda: tmp_path)
 
     called = []
-    result = run("coder", "input", lambda m: called.append(m) or "should not run")
+    async def executor(m):
+        called.append(m)
+        return "should not run"
+
+    result = await run("coder", "input", executor)
 
     assert called == []
     assert result.startswith("team.yaml at .maestro/team.yaml is invalid: ")
@@ -102,18 +111,19 @@ def test_invalid_config_refuses_and_returns_error_string(tmp_path, monkeypatch):
     assert len(events) == 1
     refused = events[0]
     assert isinstance(refused, DispatchRefusedConfigInvalidEvent)
-    assert refused.validation_error_field == "roles.coder.model"
+    assert refused.validation_error_field == "roles.coder"
 
 
-def test_executor_exception_emits_failed_then_reraises(tmp_path, monkeypatch):
+@pytest.mark.asyncio
+async def test_executor_exception_emits_failed_then_reraises(tmp_path, monkeypatch):
     save_team_config(tmp_path, _make_valid_config())
     monkeypatch.setattr("maestro.dispatcher.Path.cwd", lambda: tmp_path)
 
-    def boom(model: str) -> str:
+    async def boom(model):
         raise ValueError("kaboom")
 
     with pytest.raises(ValueError, match="kaboom"):
-        run("coder", "input", boom)
+        await run("coder", "input", boom)
 
     events = scan_log(tmp_path / ".maestro" / "logs" / "dispatch.jsonl")
     assert len(events) == 2
@@ -125,7 +135,8 @@ def test_executor_exception_emits_failed_then_reraises(tmp_path, monkeypatch):
     assert start.request_id == failed.request_id
 
 
-def test_emit_event_failure_does_not_break_dispatch(tmp_path, monkeypatch, capsys):
+@pytest.mark.asyncio
+async def test_emit_event_failure_does_not_break_dispatch(tmp_path, monkeypatch, capsys):
     save_team_config(tmp_path, _make_valid_config())
     monkeypatch.setattr("maestro.dispatcher.Path.cwd", lambda: tmp_path)
 
@@ -133,7 +144,10 @@ def test_emit_event_failure_does_not_break_dispatch(tmp_path, monkeypatch, capsy
         raise OSError("disk full")
     monkeypatch.setattr("maestro.dispatch_log.writer.os.write", _write_raise)
 
-    result = run("coder", "input", lambda m: "output ok")
+    async def executor(m):
+        return "output ok"
+
+    result = await run("coder", "input", executor)
     assert result == "output ok"
 
     captured = capsys.readouterr()

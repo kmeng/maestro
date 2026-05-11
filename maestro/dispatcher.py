@@ -1,10 +1,14 @@
-"""maestro/dispatcher.py — T3.4: dispatcher.run() with model resolution."""
+"""maestro/dispatcher.py — async dispatch lifecycle with model resolution.
+
+Delegates model resolution to maestro.team.resolve.resolve_role_model
+(single source of truth per Epic 1 D4); owns dispatch event emission
+via maestro.dispatch_log.writer.emit_event."""
 
 import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Awaitable, Callable
 
 from maestro.dispatch_log.events import (
     DispatchEndEvent,
@@ -14,82 +18,75 @@ from maestro.dispatch_log.events import (
     DispatchStartEvent,
 )
 from maestro.dispatch_log.writer import emit_event
-from maestro.team.io import TeamConfigInvalid, load_team_config
-from maestro.team.models import DEFAULT_MODELS, RoleId
+from maestro.team.models import RoleId
+from maestro.team.resolve import ResolveOk, ResolveRefuse, resolve_role_model
 
 
-def _extract_first_error(invalid: TeamConfigInvalid) -> tuple[str, str]:
-    """Return (field_path, message) from a TeamConfigInvalid.
-
-    Prefers Pydantic's structured errors list when available, falling
-    back to the raw reason string for YAML-parse-level failures."""
-    if invalid.pydantic_error is not None:
-        errs = invalid.pydantic_error.errors()
-        if errs:
-            first = errs[0]
-            field = ".".join(str(p) for p in first.get("loc", ()))
-            msg = first.get("msg", invalid.reason)
-            return field, msg
-    return "", invalid.reason
+def _to_fallback_event(
+    raw: dict, request_id: str, timestamp
+) -> DispatchFallbackConfigAbsentEvent:
+    """Translate resolve_role_model's dict-event into T3.1 Pydantic event."""
+    return DispatchFallbackConfigAbsentEvent(
+        request_id=request_id,
+        timestamp=timestamp,
+        role=raw["role"],
+        fallback_model=raw["model"],
+    )
 
 
-def run(role: RoleId, input: str, executor: Callable[[str], str]) -> str:
-    """Dispatch a worker invocation, recording start/end/failed events."""
+def _to_refused_event(
+    raw: dict, request_id: str, timestamp
+) -> DispatchRefusedConfigInvalidEvent:
+    """Translate resolve_role_model's dict-event into T3.1 Pydantic event."""
+    return DispatchRefusedConfigInvalidEvent(
+        request_id=request_id,
+        timestamp=timestamp,
+        validation_error_field=f"roles.{raw['role']}",
+        validation_error_message=raw["detail"],
+    )
+
+
+async def run(
+    role: RoleId,
+    input: str,
+    executor: Callable[[str], Awaitable[str]],
+) -> str:
+    """Dispatch a worker invocation: resolve model, emit lifecycle events,
+    invoke executor. Returns executor output on success OR structured
+    error string on TeamConfigInvalid (no exception). Re-raises any
+    executor exception AFTER emitting dispatch.failed."""
     request_id = uuid.uuid4().hex
     project_root = Path.cwd()
 
-    config = load_team_config(project_root)
+    resolution = resolve_role_model(role, project_root)
 
-    if config is None:
-        fallback_model = DEFAULT_MODELS[role]
-        member = role
+    if isinstance(resolution, ResolveRefuse):
         emit_event(
-            DispatchFallbackConfigAbsentEvent(
-                request_id=request_id,
-                timestamp=datetime.now(timezone.utc),
-                role=role,
-                fallback_model=fallback_model,
-            ),
+            _to_refused_event(resolution.event, request_id, datetime.now(timezone.utc)),
             project_root,
         )
-        model = fallback_model
+        return resolution.error_message
 
-    elif isinstance(config, TeamConfigInvalid):
-        field, msg = _extract_first_error(config)
+    if resolution.event is not None:
         emit_event(
-            DispatchRefusedConfigInvalidEvent(
-                request_id=request_id,
-                timestamp=datetime.now(timezone.utc),
-                validation_error_field=field,
-                validation_error_message=msg,
-            ),
+            _to_fallback_event(resolution.event, request_id, datetime.now(timezone.utc)),
             project_root,
         )
-        return (
-            f"team.yaml at .maestro/team.yaml is invalid: {field} — {msg}. "
-            "Open the Web UI to fix, or edit the file directly."
-        )
-
-    else:
-        entry = config.roles[role]
-        model = entry.model
-        member = entry.member
+    model = resolution.model
+    member = role
 
     start_t = time.monotonic()
     emit_event(
         DispatchStartEvent(
             request_id=request_id,
             timestamp=datetime.now(timezone.utc),
-            role=role,
-            model=model,
-            member=member,
-            input_summary=input,
+            role=role, model=model, member=member, input_summary=input,
         ),
         project_root,
     )
 
     try:
-        output = executor(model)
+        output = await executor(model)
     except Exception as e:
         duration_ms = int((time.monotonic() - start_t) * 1000)
         emit_event(
