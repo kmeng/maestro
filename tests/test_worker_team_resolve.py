@@ -192,6 +192,10 @@ def test_handler_refuses_when_team_yaml_invalid(
     _write_invalid_yaml(tmp_path)
     monkeypatch.setattr(server, "_PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(server, "LOG_DIR", tmp_path / "logs")
+    # T3.5b: _coder_impl now resolves via dispatcher.run which uses Path.cwd().
+    # T3.5c will move the other 3 impls to the same path. Patch both sources
+    # so the test works regardless of refactor stage.
+    monkeypatch.setattr("maestro.dispatcher.Path.cwd", lambda: tmp_path)
 
     handler = getattr(server, handler_name)
     result = asyncio.run(handler(arguments))

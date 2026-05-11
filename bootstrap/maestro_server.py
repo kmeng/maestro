@@ -515,6 +515,7 @@ async def job_status_handler(arguments: dict) -> list[TextContent]:
 # ============================================================
 
 from maestro.team.resolve import ResolveOk, ResolveRefuse, resolve_role_model
+from maestro.dispatcher import run as dispatcher_run
 
 
 def _emit_team_event(event: dict) -> None:
@@ -614,7 +615,10 @@ async def coder_handler(arguments: dict) -> list[TextContent]:
 
 
 async def _coder_impl(arguments: dict) -> list[TextContent]:
-    """Dispatch a code-generation spec to DeepSeek and return the raw structured response."""
+    """Dispatch a code-generation spec to DeepSeek via dispatcher.run.
+    Lifecycle events (start/end/failed/fallback/refused) flow through
+    the central dispatcher; the handler keeps prompt construction, cost
+    telemetry (_emit_dispatch_row), and the banner-formatted output shape."""
     spec = arguments.get("spec", "").strip()
     language = arguments.get("language", "").strip()
 
@@ -632,12 +636,6 @@ async def _coder_impl(arguments: dict) -> list[TextContent]:
     if attribution_issue_number is not None and not isinstance(attribution_issue_number, int):
         return [TextContent(type="text", text="ERROR: issue_number must be an integer when provided.")]
 
-    # T1.6 — resolve role's model from team.yaml, or refuse if invalid.
-    model_or_refuse = _resolve_role_or_refuse("coder")
-    if isinstance(model_or_refuse, list):
-        return model_or_refuse
-    model = model_or_refuse
-
     system_prompt = (
         f"You are a precise code generator working as part of an AI software team. "
         f"Generate {language} code that exactly meets the specification. "
@@ -648,12 +646,13 @@ async def _coder_impl(arguments: dict) -> list[TextContent]:
 
     user_prompt = f"Language: {language}\n\nSpecification:\n{spec}"
 
-    start = time.time()
-    error_msg = None
-    response_text = None
-    usage = None
+    # Captured in executor closure so the handler can build banner +
+    # cost-telemetry row after dispatcher.run completes.
+    captured_model: list[Optional[str]] = [None]
+    captured_usage: dict = {}
 
-    try:
+    async def executor(model: str) -> str:
+        captured_model[0] = model
         resp = await deepseek.chat.completions.create(
             model=model,
             messages=[
@@ -662,55 +661,80 @@ async def _coder_impl(arguments: dict) -> list[TextContent]:
             ],
             temperature=0.2,
         )
-        response_text = resp.choices[0].message.content
-        usage = {
+        captured_usage.update({
             "prompt_tokens": resp.usage.prompt_tokens,
             "completion_tokens": resp.usage.completion_tokens,
             "total_tokens": resp.usage.total_tokens,
-        }
+        })
+        return resp.choices[0].message.content
+
+    start = time.time()
+    try:
+        result = await dispatcher_run("coder", user_prompt, executor)
     except asyncio.TimeoutError:
+        duration = round(time.time() - start, 2)
         error_msg = f"Request to DeepSeek timed out after {REQUEST_TIMEOUT_SEC}s"
+        _emit_dispatch_row(
+            task_id=attribution_task_id,
+            issue_number=attribution_issue_number,
+            tool="coder",
+            model=captured_model[0] or "unknown",
+            model_provider="deepseek",
+            started_at=start,
+            duration=duration,
+            usage=captured_usage or None,
+            error=error_msg,
+        )
+        return [TextContent(
+            type="text",
+            text=(
+                f"ERROR dispatching to coder ({captured_model[0]}): {error_msg}\n\n"
+                f"Suggestion: handle this task yourself or retry."),
+        )]
     except Exception as e:
+        duration = round(time.time() - start, 2)
         error_msg = f"DeepSeek API error: {type(e).__name__}: {e}"
+        _emit_dispatch_row(
+            task_id=attribution_task_id,
+            issue_number=attribution_issue_number,
+            tool="coder",
+            model=captured_model[0] or "unknown",
+            model_provider="deepseek",
+            started_at=start,
+            duration=duration,
+            usage=captured_usage or None,
+            error=error_msg,
+        )
+        return [TextContent(
+            type="text",
+            text=(
+                f"ERROR dispatching to coder ({captured_model[0]}): {error_msg}\n\n"
+                f"Suggestion: handle this task yourself or retry."),
+        )]
 
     duration = round(time.time() - start, 2)
 
-    # Always log, even on failure — observability matters more than success ratio.
-    log_dispatch({
-        "ts": datetime.now().isoformat(),
-        "tool": "coder",
-        "model": model,
-        "input": arguments,
-        "output": response_text,
-        "error": error_msg,
-        "duration_sec": duration,
-        "usage": usage,
-    })
+    # dispatcher.run returns the error_message string on TeamConfigInvalid.
+    # No deepseek call happened; no telemetry row (no real dispatch).
+    if isinstance(result, str) and result.startswith("team.yaml at"):
+        return [TextContent(type="text", text=result)]
+
+    # Success path: dispatcher emitted start+end; emit cost telemetry + banner.
     _emit_dispatch_row(
         task_id=attribution_task_id,
         issue_number=attribution_issue_number,
         tool="coder",
-        model=model,
+        model=captured_model[0],
         model_provider="deepseek",
         started_at=start,
         duration=duration,
-        usage=usage,
-        error=error_msg,
+        usage=captured_usage,
+        error=None,
     )
-
-    if error_msg:
-        return [TextContent(
-            type="text",
-            text=(
-                f"ERROR dispatching to coder ({model}): {error_msg}\n\n"
-                f"Suggestion: handle this task yourself or retry."
-            )
-        )]
-
-    banner = _build_banner("coder", model, duration, usage["total_tokens"])
+    banner = _build_banner("coder", captured_model[0], duration, captured_usage["total_tokens"])
     return [TextContent(
         type="text",
-        text=f"{banner}\n\n{response_text}",
+        text=f"{banner}\n\n{result}",
     )]
 
 
