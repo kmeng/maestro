@@ -63,7 +63,12 @@ def check_git_state(project_root: Path, flow: Flow) -> PreflightCheck:
     count too, per ADR-0006's strict "empty / non-existent" contract.
     """
     if flow == "take_over":
-        if (project_root / ".git").is_dir():
+        # Accept both forms: regular repo (`.git/` is a dir) AND
+        # worktree / submodule (`.git` is a *file* containing
+        # `gitdir: <path>`). `.exists()` covers both — reviewer-flagged
+        # bug (T2.3 review): the original `.is_dir()` rejected worktrees
+        # and submodules as "not a git repo."
+        if (project_root / ".git").exists():
             return PreflightCheck(
                 name="git_state", passed=True, message="目录是 git 仓库"
             )
@@ -181,10 +186,15 @@ def check_no_existing_maestro(project_root: Path, flow: Flow) -> PreflightCheck:
             passed=False,
             message=f"已存在的 .maestro/ 包含 take-over 范围外的内容: {listed}",
         )
+    # Pass-branch message must distinguish "empty .maestro/" from
+    # "only contains .gitignore" — reviewer-flagged bug (T2.3 review):
+    # an empty .maestro/ used to falsely claim ".gitignore exists."
+    if ".gitignore" in existing:
+        message = "已存在 .maestro/.gitignore (将由 plan 评估)"
+    else:
+        message = "已存在 .maestro/ 目录，无意外内容"
     return PreflightCheck(
-        name="no_existing_maestro",
-        passed=True,
-        message="已存在 .maestro/.gitignore (将由 plan 评估)",
+        name="no_existing_maestro", passed=True, message=message
     )
 
 

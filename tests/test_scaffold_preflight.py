@@ -114,6 +114,18 @@ def test_check_git_state_take_over_fails_on_non_git(tmp_path: Path) -> None:
     assert "缺少 .git/" in result.message
 
 
+def test_check_git_state_take_over_passes_on_git_worktree_or_submodule(tmp_path: Path) -> None:
+    """Git worktrees and submodules have `.git` as a FILE (containing
+    `gitdir: <path>`), not a directory. Reviewer-flagged bug (T2.3
+    review): old check used `.is_dir()` which rejected these legitimate
+    git checkouts. Fix uses `.exists()`.
+    """
+    (tmp_path / ".git").write_text("gitdir: /some/real/git/dir\n")
+    result = check_git_state(tmp_path, "take_over")
+    assert result.passed is True
+    assert "git 仓库" in result.message
+
+
 def test_check_git_state_new_project_passes_on_empty_dir(tmp_path: Path) -> None:
     result = check_git_state(tmp_path, "new_project")
     assert result.passed is True
@@ -191,6 +203,19 @@ def test_check_no_existing_maestro_passes_when_only_gitignore(tmp_path: Path) ->
     result = check_no_existing_maestro(tmp_path, "take_over")
     assert result.passed is True
     assert "已存在 .maestro/.gitignore" in result.message
+
+
+def test_check_no_existing_maestro_passes_when_empty_dir_message_accurate(tmp_path: Path) -> None:
+    """Empty .maestro/ directory passes but message must NOT claim
+    .gitignore exists. Reviewer-flagged bug (T2.3 review): old code
+    fell through to the .gitignore message regardless of whether
+    .gitignore was actually present.
+    """
+    (tmp_path / ".maestro").mkdir()
+    result = check_no_existing_maestro(tmp_path, "take_over")
+    assert result.passed is True
+    assert ".gitignore" not in result.message
+    assert "无意外内容" in result.message
 
 
 def test_check_no_existing_maestro_fails_when_team_yaml_exists(tmp_path: Path) -> None:
