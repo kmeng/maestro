@@ -95,6 +95,10 @@ def test_plan_page_renders_with_all_pass_preflight(client, tmp_path, monkeypatch
     assert "应用计划" in html
     # Both modes produce plans that include CLAUDE.md.
     assert "CLAUDE.md" in html
+    # Reviewer T2.7 round 1 finding: lock the contract that engine-generated
+    # row.detail strings are Chinese. All v0.0.3 CREATE-op rows produce
+    # "将创建 <path>" details (per maestro/scaffold/engine.py).
+    assert "将创建" in html
 
 
 def test_plan_page_apply_button_disabled_on_preflight_fail(client, tmp_path, monkeypatch):
