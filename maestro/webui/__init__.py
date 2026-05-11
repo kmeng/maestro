@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import maestro
+from maestro.scaffold import io as _scaffold_io  # noqa: F401  # T2.2 startup wiring
 from maestro.webui.team_api import router as team_router
 from maestro.webui.team_catalog import router as team_catalog_router
 from maestro.webui.wizard import router as wizard_router
