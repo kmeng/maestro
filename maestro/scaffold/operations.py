@@ -21,6 +21,24 @@ class ConflictReason(str, Enum):
 
 
 @dataclass(frozen=True)
+class PreflightCheck:
+    """One pre-flight check result (T2.3).
+
+    The UI (T2.7) renders these as a banner above the per-file plan
+    rows — passing checks shown as ✓ summary; failing checks shown
+    prominently and disable the Apply button.
+
+    Names are stable identifiers (``directory_exists`` / ``git_state`` /
+    ``clean_tree`` / ``no_existing_maestro``) so the UI can target
+    specific rows for layout decisions. Messages are user-facing
+    Chinese strings.
+    """
+    name: str
+    passed: bool
+    message: str
+
+
+@dataclass(frozen=True)
 class ReplacementFile:
     """A file Maestro fully owns. Idempotence by exact-bytes match.
 
@@ -66,5 +84,11 @@ class PlanRow:
 class Plan:
     """A scaffolding plan — what would happen to each file in the input
     FileSpec list, in input order. Pure data; the apply executor (T2.2)
-    walks the rows and performs the actual writes."""
+    walks the rows and performs the actual writes.
+
+    ``preflight`` carries pre-flight check results (T2.3). Default
+    empty tuple keeps all T2.1-era constructions unchanged:
+    ``Plan(rows=(...))`` is still valid.
+    """
     rows: tuple[PlanRow, ...]
+    preflight: tuple[PreflightCheck, ...] = ()

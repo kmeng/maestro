@@ -24,9 +24,11 @@ from .operations import (
     Operation,
     Plan,
     PlanRow,
+    PreflightCheck,
     ReplacementFile,
 )
 from .engine import generate_plan
+from .preflight import run_preflight
 
 __all__ = [
     "Operation",
@@ -36,5 +38,7 @@ __all__ = [
     "FileSpec",
     "PlanRow",
     "Plan",
+    "PreflightCheck",
     "generate_plan",
+    "run_preflight",
 ]
