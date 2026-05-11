@@ -185,9 +185,10 @@ def apply_plan(
 
             elif row.op == Operation.APPEND_DELIMITED:
                 # MergeableFile only — splice the wrapped section onto
-                # the END of the existing user content. We deliberately
-                # use raw read here (not normalized) so we don't mutate
-                # the user's existing CRLF / LF mix on lines we don't own.
+                # the END of the existing user content. Read raw so we
+                # don't make line-ending decisions here; atomic_write
+                # enforces LF on write per ADR-0006's "Output is always
+                # LF" rule.
                 if not isinstance(spec, MergeableFile):
                     yield FileFailed(
                         path=path_str,
@@ -218,10 +219,14 @@ def apply_plan(
 
                 # Ensure exactly one blank line between user content
                 # and our section, regardless of how the existing file
-                # was terminated. Strip trailing newlines and re-add
-                # exactly two — this handles all three cases (no
-                # newline, single newline, multiple newlines) uniformly.
-                new_content = existing.rstrip(b"\n") + b"\n\n" + wrapped
+                # was terminated. Strip BOTH "\r" and "\n" from the
+                # tail (rstrip with a byte set) so a CRLF-terminated
+                # existing file doesn't leave a dangling \r before our
+                # added "\n\n". atomic_write below normalizes any
+                # remaining internal CRLF to LF (per ADR-0006), but
+                # producing clean bytes upstream is the more honest
+                # contract.
+                new_content = existing.rstrip(b"\r\n") + b"\n\n" + wrapped
 
                 atomic_write(abs_path, new_content)
                 yield FileSucceeded(path=path_str, op=Operation.APPEND_DELIMITED)

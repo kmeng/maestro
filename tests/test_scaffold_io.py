@@ -126,6 +126,53 @@ def test_apply_plan_append_delimited(tmp_path: Path) -> None:
     assert b"user content\n\n<!-- maestro" in content
 
 
+def test_apply_plan_append_to_crlf_terminated_file(tmp_path: Path) -> None:
+    """Existing CLAUDE.md with CRLF line endings → output is clean LF.
+
+    Reviewer-flagged bug (T2.2 review): old `rstrip(b"\\n")` left
+    trailing `\\r` because rstrip only strips the chars in the byte
+    set; on a CRLF-terminated existing file we'd produce
+    `...\\r\\n\\n<!-- maestro...`. Fix: `rstrip(b"\\r\\n")` to strip
+    both. atomic_write also normalizes CRLF→LF on write, so the
+    on-disk bytes are clean either way — but the in-memory production
+    must be clean too.
+    """
+    (tmp_path / "CLAUDE.md").write_bytes(b"user content\r\n")
+    spec = MergeableFile(
+        path="CLAUDE.md",
+        section_body=b"added",
+        standalone_full=b"ignored",
+        section_version=1,
+    )
+    plan = _plan([PlanRow(path="CLAUDE.md", op=Operation.APPEND_DELIMITED, detail="")])
+    list(apply_plan(plan, [spec], tmp_path))
+    content = (tmp_path / "CLAUDE.md").read_bytes()
+    # No CR anywhere — atomic_write enforces LF.
+    assert b"\r" not in content
+    # Exactly one blank line between user content and the marker, with
+    # no orphaned bytes either side.
+    assert b"user content\n\n<!-- maestro:start v=1 -->" in content
+    assert b"user content\r" not in content
+    assert b"\n\n\n" not in content
+
+
+def test_apply_plan_append_to_file_without_trailing_newline(tmp_path: Path) -> None:
+    """Existing file with no trailing newline at all → output is still
+    correctly separated by exactly one blank line."""
+    (tmp_path / "f").write_bytes(b"no newline at end")
+    spec = MergeableFile(
+        path="f",
+        section_body=b"x",
+        standalone_full=b"ignored",
+        section_version=1,
+    )
+    plan = _plan([PlanRow(path="f", op=Operation.APPEND_DELIMITED, detail="")])
+    list(apply_plan(plan, [spec], tmp_path))
+    content = (tmp_path / "f").read_bytes()
+    assert b"no newline at end\n\n<!-- maestro:start v=1 -->" in content
+    assert b"\n\n\n" not in content
+
+
 def test_apply_plan_append_preserves_existing_user_content(tmp_path: Path) -> None:
     original = b"some config\n"
     (tmp_path / "config").write_bytes(original)
