@@ -776,3 +776,87 @@ def test_call_tool_returns_error_for_unknown_tool(server):
     result = asyncio.run(server.call_tool("ghost_role", {}))
     assert "Unknown tool" in result[0].text
     assert "ghost_role" in result[0].text
+
+
+# ============================================================
+# T3.5b conversion tests — _coder_impl thin wrapper over dispatcher.run
+# ============================================================
+
+
+def test_coder_v0_0_2_env_only_fallback_path(server, monkeypatch, tmp_path):
+    """v0.0.2 behavior preserved: no team.yaml + mocked deepseek →
+    coder produces banner+content output AND dispatch.jsonl gets
+    fallback→start→end events."""
+    from maestro.dispatch_log.reader import scan_log
+
+    mock_create = AsyncMock(return_value=_mock_deepseek_response("<output>code</output>"))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+    # dispatcher.run uses Path.cwd() to find team.yaml / write dispatch.jsonl.
+    monkeypatch.setattr("maestro.dispatcher.Path.cwd", lambda: tmp_path)
+
+    result = asyncio.run(server._coder_impl({"spec": "trivial", "language": "python"}))
+
+    # Output shape preserved.
+    assert len(result) == 1
+    text = result[0].text
+    assert text.startswith("[coder dispatch — deepseek-v4-pro")
+    assert "<output>code</output>" in text
+
+    # deepseek was called once with the fallback model.
+    assert mock_create.call_count == 1
+    assert mock_create.call_args.kwargs["model"] == "deepseek-v4-pro"
+
+    # dispatch.jsonl has fallback → start → end (3 events).
+    events = scan_log(tmp_path / ".maestro" / "logs" / "dispatch.jsonl")
+    assert len(events) == 3
+    assert events[0].event_type == "dispatch.fallback.config_absent"
+    assert events[0].role == "coder"
+    assert events[0].fallback_model == "deepseek-v4-pro"
+    assert events[1].event_type == "dispatch.start"
+    assert events[1].model == "deepseek-v4-pro"
+    assert events[2].event_type == "dispatch.end"
+    # All three share the same request_id.
+    assert events[0].request_id == events[1].request_id == events[2].request_id
+
+
+def test_coder_broken_team_yaml_refuses(server, monkeypatch, tmp_path):
+    """Broken team.yaml → coder returns refuse TextContent; executor never invoked;
+    dispatch.jsonl has 1 refused event."""
+    import textwrap as _tw
+    from maestro.dispatch_log.reader import scan_log
+
+    (tmp_path / ".maestro").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".maestro" / "team.yaml").write_text(_tw.dedent("""\
+        schema_version: 1
+        roles:
+          coder:
+            member: alice
+            model: "BAD CASE"
+          librarian:
+            member: bob
+            model: deepseek-v4-flash
+          reviewer:
+            member: carol
+            model: deepseek-v4-pro
+          scribe:
+            member: dave
+            model: deepseek-v4-flash
+    """))
+
+    mock_create = AsyncMock(return_value=_mock_deepseek_response("should not run"))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+    monkeypatch.setattr("maestro.dispatcher.Path.cwd", lambda: tmp_path)
+
+    result = asyncio.run(server._coder_impl({"spec": "trivial", "language": "python"}))
+
+    # Refused: deepseek NEVER called.
+    assert mock_create.call_count == 0
+
+    # Output is the dispatcher's error string, wrapped in one TextContent.
+    assert len(result) == 1
+    assert "team.yaml at .maestro/team.yaml is invalid" in result[0].text
+
+    # dispatch.jsonl: 1 refused event, no start/end.
+    events = scan_log(tmp_path / ".maestro" / "logs" / "dispatch.jsonl")
+    assert len(events) == 1
+    assert events[0].event_type == "dispatch.refused.config_invalid"
