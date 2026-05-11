@@ -212,3 +212,51 @@ def test_upsert_accepts_both_z_and_offset_timestamps_on_subsequent_reads(
     result = read_registry()
     assert len(result) == 2
     assert {e.path for e in result} == {existing.resolve(), new_one.resolve()}
+
+
+# -- Silent-failure contract (post-review fix for #37) ----------------------
+
+def test_read_registry_silent_on_nul_byte_path(registry_path, tmp_path):
+    """A registry entry whose path contains NUL bytes must be silently
+    dropped — Path(<NUL>) raises ValueError. Per the failure contract,
+    read_registry NEVER raises.
+    """
+    good_dir = tmp_path / "good"
+    good_dir.mkdir()
+    data = {
+        "schema_version": 1,
+        "projects": [
+            {"path": str(good_dir), "last_opened_at": "2026-05-08T14:23:11Z"},
+            # NUL byte forces Path() to raise ValueError
+            {"path": "bad\x00path", "last_opened_at": "2026-05-08T14:23:12Z"},
+        ],
+    }
+    registry_path.write_text(json.dumps(data))
+    # Must not raise; bad entry is silently dropped.
+    result = read_registry()
+    assert len(result) == 1
+    assert result[0].path == good_dir
+
+
+def test_upsert_project_silent_on_filesystem_error(registry_path, tmp_path, monkeypatch):
+    """A filesystem error during the write path must NOT propagate.
+    Per the failure contract, upsert_project NEVER raises.
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+
+    # Force os.replace to raise — simulates disk full / permission denied
+    # at the atomic-rename step.
+    import maestro.registry.projects as pmod
+    def boom(*a, **kw):
+        raise OSError("simulated disk full")
+    monkeypatch.setattr(pmod.os, "replace", boom)
+
+    # Must NOT raise — caller has no recourse for cache-write failure.
+    upsert_project(target)
+
+    # No torn tmp file should remain (cleanup must run on the error path).
+    parent = registry_path.parent
+    if parent.exists():
+        leftovers = [c for c in parent.iterdir() if c.name.startswith("projects.json.tmp.")]
+        assert leftovers == [], f"Found orphan tmp files: {leftovers}"
