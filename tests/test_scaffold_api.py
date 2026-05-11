@@ -311,6 +311,31 @@ def test_apply_with_empty_accepted_paths_does_not_register(client, tmp_path, mon
     assert calls == []
 
 
+def test_apply_with_only_unknown_accepted_paths_does_not_register(client, tmp_path, monkeypatch):
+    """accepted_paths containing only unknown paths → same guard path.
+
+    Reviewer-flagged test gap (T2.6 review round 2): the if-guard on
+    plan.rows protects both empty-accepted_paths AND
+    only-unknown-accepted_paths since both produce empty rows after
+    the _build_filespecs filter. Lock the contract for both.
+    """
+    _stub_preflight_all_pass(monkeypatch)
+    calls: list[Path] = []
+    monkeypatch.setattr(
+        "maestro.webui.scaffold_api.upsert_project",
+        lambda p: calls.append(p),
+    )
+    body = {
+        "path": str(tmp_path),
+        "mode": "take_over",
+        "accepted_paths": ["bogus.txt", "not-in-plan.md"],  # all unknown
+    }
+    events = _stream_events(client, body)
+    assert events[-1][0] == "plan_complete"
+    assert events[-1][1] == {"succeeded": 0, "failed": 0}
+    assert calls == []
+
+
 def test_plan_request_body_validation(client):
     resp = client.post("/api/scaffold/plan", json={"path": "/tmp"})  # no mode
     assert resp.status_code == 422
