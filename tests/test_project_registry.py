@@ -238,6 +238,27 @@ def test_read_registry_silent_on_nul_byte_path(registry_path, tmp_path):
     assert result[0].path == good_dir
 
 
+def test_read_registry_silent_on_is_file_permission_error(registry_path, tmp_path, monkeypatch):
+    """If Path.is_file() raises (e.g., PermissionError on inaccessible
+    parent), read_registry must still return [] rather than propagate.
+    Per the failure contract, read_registry NEVER raises — and the
+    bulletproof outer try/except enforces this structurally.
+    """
+    # Make registry_path.is_file() raise. monkeypatch.setattr on the
+    # instance is awkward for Path; instead, swap the path-getter for
+    # a custom Path subclass whose is_file() raises.
+    class HostilePath(type(registry_path)):
+        def is_file(self):
+            raise PermissionError("simulated permission denied on parent")
+
+    hostile = HostilePath(str(registry_path))
+    monkeypatch.setattr(
+        "maestro.registry.projects.projects_registry_path", lambda: hostile
+    )
+    # Must NOT raise. Empty list since we couldn't even probe the file.
+    assert read_registry() == []
+
+
 def test_upsert_project_silent_on_filesystem_error(registry_path, tmp_path, monkeypatch):
     """A filesystem error during the write path must NOT propagate.
     Per the failure contract, upsert_project NEVER raises.

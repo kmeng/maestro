@@ -13,7 +13,16 @@ Failure contract — read_registry()
     This function NEVER raises.
     Returns ``list[ProjectEntry]`` (possibly empty).
 
+    The ENTIRE function body is wrapped in ``try/except Exception``;
+    any exception — including ones not explicitly enumerated below —
+    causes the function to return an empty list (or partially-built
+    entries list if the exception fires mid-iteration). This is
+    structural enforcement of the never-raises contract; future
+    additions to the function body inherit the protection automatically.
+
     Returns empty list on:
+        - ``projects_registry_path()`` raises (rare)
+        - ``Path.is_file()`` raises (e.g., parent dir permission denied)
         - File missing
         - JSON parse failure
         - Top-level not a dict
@@ -94,51 +103,66 @@ class ProjectEntry:
 
 
 def read_registry() -> list[ProjectEntry]:
-    """See module docstring for the full failure contract."""
-    reg_path = projects_registry_path()
-    if not reg_path.is_file():
-        return []
-    try:
-        with reg_path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return []
-    if not isinstance(data, dict):
-        return []
-    if data.get("schema_version") != CURRENT_SCHEMA_VERSION:
-        return []
-    projects_list = data.get("projects")
-    if not isinstance(projects_list, list):
-        return []
+    """See module docstring for the full failure contract.
+
+    The entire body is wrapped in ``try/except Exception`` — structural
+    enforcement of "NEVER raises." Any unforeseen failure (including in
+    future additions to this function) returns the entries collected
+    so far, which is the safest empty-prefix on the happy path.
+    """
     entries: list[ProjectEntry] = []
-    for item in projects_list:
+    try:
+        reg_path = projects_registry_path()
+        # Path.is_file() can raise PermissionError on inaccessible parent
+        # directories; covered by the outer try/except.
+        if not reg_path.is_file():
+            return []
         try:
-            if not isinstance(item, dict):
+            with reg_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return []
+        if not isinstance(data, dict):
+            return []
+        if data.get("schema_version") != CURRENT_SCHEMA_VERSION:
+            return []
+        projects_list = data.get("projects")
+        if not isinstance(projects_list, list):
+            return []
+        for item in projects_list:
+            try:
+                if not isinstance(item, dict):
+                    continue
+                path_str = item.get("path")
+                timestamp_str = item.get("last_opened_at")
+                if not isinstance(path_str, str) or not isinstance(timestamp_str, str):
+                    continue
+                ts = _parse_timestamp(timestamp_str)
+                if ts is None:
+                    continue
+                # Path() can raise ValueError on NUL bytes; .exists() can raise
+                # OSError on rare permission edge cases. The blanket Exception
+                # catch is intentional: this is cache code, not authoritative —
+                # any failure to interpret an entry means we drop it silently.
+                p = Path(path_str)
+                if not p.exists():
+                    # Dead-path pruning — silently drop entries the user has since
+                    # deleted/moved. Lazy write-back: the file is not rewritten
+                    # here; whatever next upsert happens will persist the pruned form.
+                    continue
+                entries.append(ProjectEntry(path=p, last_opened_at=ts))
+            except Exception:
+                # Any unexpected failure interpreting this entry → drop it.
+                # See module docstring: read_registry NEVER raises.
                 continue
-            path_str = item.get("path")
-            timestamp_str = item.get("last_opened_at")
-            if not isinstance(path_str, str) or not isinstance(timestamp_str, str):
-                continue
-            ts = _parse_timestamp(timestamp_str)
-            if ts is None:
-                continue
-            # Path() can raise ValueError on NUL bytes; .exists() can raise
-            # OSError on rare permission edge cases. The blanket Exception
-            # catch is intentional: this is cache code, not authoritative —
-            # any failure to interpret an entry means we drop it silently.
-            p = Path(path_str)
-            if not p.exists():
-                # Dead-path pruning — silently drop entries the user has since
-                # deleted/moved. Lazy write-back: the file is not rewritten
-                # here; whatever next upsert happens will persist the pruned form.
-                continue
-            entries.append(ProjectEntry(path=p, last_opened_at=ts))
-        except Exception:
-            # Any unexpected failure interpreting this entry → drop it.
-            # See module docstring: read_registry NEVER raises.
-            continue
-    entries.sort(key=lambda e: e.last_opened_at, reverse=True)
-    return entries
+        entries.sort(key=lambda e: e.last_opened_at, reverse=True)
+        return entries
+    except Exception:
+        # Bulletproof outer handler. Catches any failure not covered above
+        # (e.g., projects_registry_path() raising, Path.is_file()
+        # PermissionError, sort() failure on heterogeneous datetimes —
+        # all guaranteed silent per the module's "NEVER raises" contract).
+        return entries
 
 
 def upsert_project(path: Path, *, now: datetime | None = None) -> None:
