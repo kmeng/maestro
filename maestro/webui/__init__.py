@@ -21,6 +21,7 @@ from fastapi.templating import Jinja2Templates
 
 import maestro
 from maestro.scaffold import io as _scaffold_io  # noqa: F401  # T2.2 startup wiring
+from maestro.webui.dispatch_log_api import router as dispatch_log_router
 from maestro.webui.scaffold_api import router as scaffold_router
 from maestro.webui.scaffold_view import router as scaffold_view_router
 from maestro.webui.team_api import router as team_router
@@ -33,6 +34,7 @@ app.include_router(wizard_router)
 app.include_router(team_catalog_router)
 app.include_router(scaffold_router)
 app.include_router(scaffold_view_router)
+app.include_router(dispatch_log_router)
 
 _STATIC_DIR = Path(__file__).parent / "static"
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
