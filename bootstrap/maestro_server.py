@@ -967,7 +967,12 @@ async def librarian_handler(arguments: dict) -> list[TextContent]:
 
 
 async def _librarian_impl(arguments: dict) -> list[TextContent]:
-    """Read a document (from file_path or inline) and extract content matching the query."""
+    """Read a document (from file_path or inline) and extract content matching the query.
+
+    Thin wrapper over dispatcher.run — lifecycle events flow through the central
+    dispatcher; the handler keeps argument validation, document loading,
+    JSON output validation + verbatim-quote verification, cost telemetry
+    (_emit_dispatch_row), and the _banner-embedded JSON output shape."""
     file_path = arguments.get("file_path")
     document_text = arguments.get("document_text")
     query = arguments.get("query", "").strip()
@@ -991,12 +996,6 @@ async def _librarian_impl(arguments: dict) -> list[TextContent]:
     attribution_issue_number = arguments.get("issue_number")
     if attribution_issue_number is not None and not isinstance(attribution_issue_number, int):
         return _error_response("input_validation", "issue_number must be an integer")
-
-    # T1.6 — resolve role's model from team.yaml, or refuse if invalid.
-    model_or_refuse = _resolve_role_or_refuse("librarian")
-    if isinstance(model_or_refuse, list):
-        return model_or_refuse
-    model = model_or_refuse
 
     # The whole point of the role is to keep document_text out of the
     # caller's context — only the worker sees the bytes.
@@ -1026,70 +1025,62 @@ async def _librarian_impl(arguments: dict) -> list[TextContent]:
             "pass a smaller slice via document_text or split the request",
         )
 
-    start = time.time()
-    error_msg = None
-    raw = None
-    parsed = None
-    usage = None
+    captured_model: list[Optional[str]] = [None]
+    captured_usage: dict = {}
 
-    try:
+    user_prompt = f"Query: {query}\n\nDocument:\n{document_text}"
+
+    async def executor(model: str) -> str:
+        captured_model[0] = model
         resp = await deepseek.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": LIBRARIAN_SYSTEM_PROMPT},
-                {"role": "user", "content": f"Query: {query}\n\nDocument:\n{document_text}"},
+                {"role": "user", "content": user_prompt},
             ],
             response_format={"type": "json_object"},
             temperature=0.1,
         )
-        raw = resp.choices[0].message.content
-        usage = {
+        captured_usage.update({
             "prompt_tokens": resp.usage.prompt_tokens,
             "completion_tokens": resp.usage.completion_tokens,
             "total_tokens": resp.usage.total_tokens,
-        }
+        })
+        return resp.choices[0].message.content
+
+    start = time.time()
+    try:
+        result = await dispatcher_run("librarian", user_prompt, executor)
     except asyncio.TimeoutError:
+        duration = round(time.time() - start, 2)
         error_msg = "model_timeout"
+        _emit_dispatch_row(
+            task_id=attribution_task_id, issue_number=attribution_issue_number,
+            tool="librarian", model=captured_model[0] or "unknown",
+            model_provider="deepseek", started_at=start, duration=duration,
+            usage=captured_usage or None, error=error_msg,
+        )
+        return _error_response("model_api_error", error_msg)
     except Exception as e:
+        duration = round(time.time() - start, 2)
         error_msg = f"model_api_error: {type(e).__name__}: {e}"
+        _emit_dispatch_row(
+            task_id=attribution_task_id, issue_number=attribution_issue_number,
+            tool="librarian", model=captured_model[0] or "unknown",
+            model_provider="deepseek", started_at=start, duration=duration,
+            usage=captured_usage or None, error=error_msg,
+        )
+        return _error_response("model_api_error", error_msg)
 
     duration = round(time.time() - start, 2)
 
-    # Log dispatch metadata (NOT the document text — it'd defeat the point).
-    log_dispatch({
-        "ts": datetime.now().isoformat(),
-        "tool": "librarian",
-        "model": model,
-        "input": {
-            "file_path": file_path,
-            "has_inline_document": bool(arguments.get("document_text")),
-            "document_chars": len(document_text),
-            "query": query,
-        },
-        "output_raw_chars": len(raw) if raw else None,
-        "error": error_msg,
-        "duration_sec": duration,
-        "usage": usage,
-    })
-    _emit_dispatch_row(
-        task_id=attribution_task_id,
-        issue_number=attribution_issue_number,
-        tool="librarian",
-        model=model,
-        model_provider="deepseek",
-        started_at=start,
-        duration=duration,
-        usage=usage,
-        error=error_msg,
-    )
-
-    if error_msg:
-        return _error_response("model_api_error", error_msg)
+    if isinstance(result, str) and result.startswith("team.yaml at"):
+        return [TextContent(type="text", text=result)]
 
     try:
-        parsed = json.loads(raw)
+        parsed = json.loads(result)
     except json.JSONDecodeError as e:
-        return _error_response("output_not_json", str(e), raw=raw[:500])
+        return _error_response("output_not_json", str(e), raw=result[:500])
 
     validation_error = _validate_librarian_output(parsed)
     if validation_error:
@@ -1114,8 +1105,15 @@ async def _librarian_impl(arguments: dict) -> list[TextContent]:
         )
 
     parsed["_banner"] = _build_banner(
-        "librarian", model, duration, usage["total_tokens"]
+        "librarian", captured_model[0], duration, captured_usage["total_tokens"]
     )
+
+    _emit_dispatch_row(
+        task_id=attribution_task_id, issue_number=attribution_issue_number,
+        tool="librarian", model=captured_model[0], model_provider="deepseek",
+        started_at=start, duration=duration, usage=captured_usage, error=None,
+    )
+
     return [TextContent(
         type="text",
         text=json.dumps(parsed, ensure_ascii=False, indent=2),
@@ -1275,7 +1273,9 @@ async def reviewer_handler(arguments: dict) -> list[TextContent]:
 
 
 async def _reviewer_impl(arguments: dict) -> list[TextContent]:
-    """Judge whether code matches a spec; return structured verdict + findings."""
+    """Judge whether code matches a spec; return structured verdict + findings.
+
+    Thin wrapper over dispatcher.run."""
     spec = arguments.get("spec", "").strip()
     code = arguments.get("code", "").strip()
     language = arguments.get("language", "").strip()
@@ -1294,21 +1294,13 @@ async def _reviewer_impl(arguments: dict) -> list[TextContent]:
     if attribution_issue_number is not None and not isinstance(attribution_issue_number, int):
         return _error_response("input_validation", "issue_number must be an integer")
 
-    # T1.6 — resolve role's model from team.yaml, or refuse if invalid.
-    model_or_refuse = _resolve_role_or_refuse("reviewer")
-    if isinstance(model_or_refuse, list):
-        return model_or_refuse
-    model = model_or_refuse
-
     user_prompt = f"Language: {language}\n\nSpec:\n{spec}\n\nCode:\n{code}"
 
-    start = time.time()
-    error_msg = None
-    raw = None
-    parsed = None
-    usage = None
+    captured_model: list[Optional[str]] = [None]
+    captured_usage: dict = {}
 
-    try:
+    async def executor(model: str) -> str:
+        captured_model[0] = model
         resp = await deepseek.chat.completions.create(
             model=model,
             messages=[
@@ -1318,62 +1310,61 @@ async def _reviewer_impl(arguments: dict) -> list[TextContent]:
             response_format={"type": "json_object"},
             temperature=0.1,
         )
-        raw = resp.choices[0].message.content
-        usage = {
+        captured_usage.update({
             "prompt_tokens": resp.usage.prompt_tokens,
             "completion_tokens": resp.usage.completion_tokens,
             "total_tokens": resp.usage.total_tokens,
-        }
+        })
+        return resp.choices[0].message.content
+
+    start = time.time()
+    try:
+        result = await dispatcher_run("reviewer", user_prompt, executor)
     except asyncio.TimeoutError:
+        duration = round(time.time() - start, 2)
         error_msg = "model_timeout"
+        _emit_dispatch_row(
+            task_id=attribution_task_id, issue_number=attribution_issue_number,
+            tool="reviewer", model=captured_model[0] or "unknown",
+            model_provider="deepseek", started_at=start, duration=duration,
+            usage=captured_usage or None, error=error_msg,
+        )
+        return _error_response("model_api_error", error_msg)
     except Exception as e:
+        duration = round(time.time() - start, 2)
         error_msg = f"model_api_error: {type(e).__name__}: {e}"
+        _emit_dispatch_row(
+            task_id=attribution_task_id, issue_number=attribution_issue_number,
+            tool="reviewer", model=captured_model[0] or "unknown",
+            model_provider="deepseek", started_at=start, duration=duration,
+            usage=captured_usage or None, error=error_msg,
+        )
+        return _error_response("model_api_error", error_msg)
 
     duration = round(time.time() - start, 2)
 
-    # Log only metadata, not the spec/code text — both are already in the
-    # caller's context for the same task being reviewed.
-    log_dispatch({
-        "ts": datetime.now().isoformat(),
-        "tool": "reviewer",
-        "model": model,
-        "input": {
-            "spec_chars": len(spec),
-            "code_chars": len(code),
-            "language": language,
-        },
-        "output_raw_chars": len(raw) if raw else None,
-        "error": error_msg,
-        "duration_sec": duration,
-        "usage": usage,
-    })
-    _emit_dispatch_row(
-        task_id=attribution_task_id,
-        issue_number=attribution_issue_number,
-        tool="reviewer",
-        model=model,
-        model_provider="deepseek",
-        started_at=start,
-        duration=duration,
-        usage=usage,
-        error=error_msg,
-    )
-
-    if error_msg:
-        return _error_response("model_api_error", error_msg)
+    if isinstance(result, str) and result.startswith("team.yaml at"):
+        return [TextContent(type="text", text=result)]
 
     try:
-        parsed = json.loads(raw)
+        parsed = json.loads(result)
     except json.JSONDecodeError as e:
-        return _error_response("output_not_json", str(e), raw=raw[:500])
+        return _error_response("output_not_json", str(e), raw=result[:500])
 
     validation_error = _validate_reviewer_output(parsed)
     if validation_error:
         return _error_response("output_schema_invalid", validation_error, raw=parsed)
 
     parsed["_banner"] = _build_banner(
-        "reviewer", model, duration, usage["total_tokens"]
+        "reviewer", captured_model[0], duration, captured_usage["total_tokens"]
     )
+
+    _emit_dispatch_row(
+        task_id=attribution_task_id, issue_number=attribution_issue_number,
+        tool="reviewer", model=captured_model[0], model_provider="deepseek",
+        started_at=start, duration=duration, usage=captured_usage, error=None,
+    )
+
     return [TextContent(
         type="text",
         text=json.dumps(parsed, ensure_ascii=False, indent=2),
@@ -1505,7 +1496,9 @@ async def scribe_handler(arguments: dict) -> list[TextContent]:
 
 
 async def _scribe_impl(arguments: dict) -> list[TextContent]:
-    """Draft a commit message and PR body from a diff + issue context."""
+    """Draft a commit message and PR body from a diff + issue context.
+
+    Thin wrapper over dispatcher.run."""
     diff = arguments.get("diff", "").strip()
     issue_number = arguments.get("issue_number")
     issue_title = arguments.get("issue_title", "").strip()
@@ -1529,12 +1522,6 @@ async def _scribe_impl(arguments: dict) -> list[TextContent]:
         return _error_response("input_validation", "task_id must be a string")
     attribution_issue_number = issue_number  # already validated above
 
-    # T1.6 — resolve role's model from team.yaml, or refuse if invalid.
-    model_or_refuse = _resolve_role_or_refuse("scribe")
-    if isinstance(model_or_refuse, list):
-        return model_or_refuse
-    model = model_or_refuse
-
     user_prompt = (
         f"Issue #{issue_number}: {issue_title}\n\n"
         f"Issue body:\n{issue_body}\n\n"
@@ -1542,13 +1529,11 @@ async def _scribe_impl(arguments: dict) -> list[TextContent]:
         f"Diff:\n{diff}"
     )
 
-    start = time.time()
-    error_msg = None
-    raw = None
-    parsed = None
-    usage = None
+    captured_model: list[Optional[str]] = [None]
+    captured_usage: dict = {}
 
-    try:
+    async def executor(model: str) -> str:
+        captured_model[0] = model
         resp = await deepseek.chat.completions.create(
             model=model,
             messages=[
@@ -1558,62 +1543,61 @@ async def _scribe_impl(arguments: dict) -> list[TextContent]:
             response_format={"type": "json_object"},
             temperature=0.2,
         )
-        raw = resp.choices[0].message.content
-        usage = {
+        captured_usage.update({
             "prompt_tokens": resp.usage.prompt_tokens,
             "completion_tokens": resp.usage.completion_tokens,
             "total_tokens": resp.usage.total_tokens,
-        }
+        })
+        return resp.choices[0].message.content
+
+    start = time.time()
+    try:
+        result = await dispatcher_run("scribe", user_prompt, executor)
     except asyncio.TimeoutError:
+        duration = round(time.time() - start, 2)
         error_msg = "model_timeout"
+        _emit_dispatch_row(
+            task_id=attribution_task_id, issue_number=attribution_issue_number,
+            tool="scribe", model=captured_model[0] or "unknown",
+            model_provider="deepseek", started_at=start, duration=duration,
+            usage=captured_usage or None, error=error_msg,
+        )
+        return _error_response("model_api_error", error_msg)
     except Exception as e:
+        duration = round(time.time() - start, 2)
         error_msg = f"model_api_error: {type(e).__name__}: {e}"
+        _emit_dispatch_row(
+            task_id=attribution_task_id, issue_number=attribution_issue_number,
+            tool="scribe", model=captured_model[0] or "unknown",
+            model_provider="deepseek", started_at=start, duration=duration,
+            usage=captured_usage or None, error=error_msg,
+        )
+        return _error_response("model_api_error", error_msg)
 
     duration = round(time.time() - start, 2)
 
-    # Log metadata only — diff and issue body are already in the caller's
-    # context for the commit being drafted.
-    log_dispatch({
-        "ts": datetime.now().isoformat(),
-        "tool": "scribe",
-        "model": model,
-        "input": {
-            "diff_chars": len(diff),
-            "issue_number": issue_number,
-            "issue_title": issue_title,
-        },
-        "output_raw_chars": len(raw) if raw else None,
-        "error": error_msg,
-        "duration_sec": duration,
-        "usage": usage,
-    })
-    _emit_dispatch_row(
-        task_id=attribution_task_id,
-        issue_number=attribution_issue_number,
-        tool="scribe",
-        model=model,
-        model_provider="deepseek",
-        started_at=start,
-        duration=duration,
-        usage=usage,
-        error=error_msg,
-    )
-
-    if error_msg:
-        return _error_response("model_api_error", error_msg)
+    if isinstance(result, str) and result.startswith("team.yaml at"):
+        return [TextContent(type="text", text=result)]
 
     try:
-        parsed = json.loads(raw)
+        parsed = json.loads(result)
     except json.JSONDecodeError as e:
-        return _error_response("output_not_json", str(e), raw=raw[:500])
+        return _error_response("output_not_json", str(e), raw=result[:500])
 
     validation_error = _validate_scribe_output(parsed)
     if validation_error:
         return _error_response("output_schema_invalid", validation_error, raw=parsed)
 
     parsed["_banner"] = _build_banner(
-        "scribe", model, duration, usage["total_tokens"]
+        "scribe", captured_model[0], duration, captured_usage["total_tokens"]
     )
+
+    _emit_dispatch_row(
+        task_id=attribution_task_id, issue_number=attribution_issue_number,
+        tool="scribe", model=captured_model[0], model_provider="deepseek",
+        started_at=start, duration=duration, usage=captured_usage, error=None,
+    )
+
     return [TextContent(
         type="text",
         text=json.dumps(parsed, ensure_ascii=False, indent=2),
