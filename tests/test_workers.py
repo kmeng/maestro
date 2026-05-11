@@ -860,3 +860,235 @@ def test_coder_broken_team_yaml_refuses(server, monkeypatch, tmp_path):
     events = scan_log(tmp_path / ".maestro" / "logs" / "dispatch.jsonl")
     assert len(events) == 1
     assert events[0].event_type == "dispatch.refused.config_invalid"
+
+
+# ============================================================
+# T3.5c conversion tests — _librarian_impl / _reviewer_impl / _scribe_impl
+# thin wrappers over dispatcher.run
+# ============================================================
+
+
+_VALID_LIBRARIAN_JSON = (
+    '{"hard_constraints": [], "summary": "ok", '
+    '"recommend_full_read": [], "concerns": []}'
+)
+_VALID_REVIEWER_JSON = (
+    '{"verdict": "pass", "findings": [], '
+    '"missed_requirements": [], "concerns": []}'
+)
+_VALID_SCRIBE_JSON = (
+    '{"commit_message": "msg", "pr_title": "t", '
+    '"pr_body": "b", "concerns": []}'
+)
+
+
+def test_librarian_v0_0_2_env_only_fallback_path(server, monkeypatch, tmp_path):
+    """v0.0.2 behavior preserved: no team.yaml + mocked deepseek →
+    librarian produces JSON output with _banner AND dispatch.jsonl gets
+    fallback→start→end events."""
+    from maestro.dispatch_log.reader import scan_log
+    import json as _json
+
+    mock_create = AsyncMock(return_value=_mock_deepseek_response(_VALID_LIBRARIAN_JSON))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+    monkeypatch.setattr("maestro.dispatcher.Path.cwd", lambda: tmp_path)
+
+    result = asyncio.run(server._librarian_impl({
+        "document_text": "hello world",
+        "query": "find a greeting",
+    }))
+
+    assert len(result) == 1
+    payload = _json.loads(result[0].text)
+    assert "_banner" in payload
+    assert payload["_banner"].startswith("[librarian dispatch — deepseek-v4-flash")
+    assert payload["summary"] == "ok"
+
+    assert mock_create.call_count == 1
+    assert mock_create.call_args.kwargs["model"] == "deepseek-v4-flash"
+
+    events = scan_log(tmp_path / ".maestro" / "logs" / "dispatch.jsonl")
+    assert len(events) == 3
+    assert events[0].event_type == "dispatch.fallback.config_absent"
+    assert events[0].role == "librarian"
+    assert events[1].event_type == "dispatch.start"
+    assert events[2].event_type == "dispatch.end"
+
+
+def test_librarian_broken_team_yaml_refuses(server, monkeypatch, tmp_path):
+    """Broken team.yaml → librarian returns refuse; executor never invoked."""
+    import textwrap as _tw
+    from maestro.dispatch_log.reader import scan_log
+
+    (tmp_path / ".maestro").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".maestro" / "team.yaml").write_text(_tw.dedent("""\
+        schema_version: 1
+        roles:
+          coder:
+            member: alice
+            model: "BAD CASE"
+          librarian:
+            member: bob
+            model: deepseek-v4-flash
+          reviewer:
+            member: carol
+            model: deepseek-v4-pro
+          scribe:
+            member: dave
+            model: deepseek-v4-flash
+    """))
+
+    mock_create = AsyncMock(return_value=_mock_deepseek_response(_VALID_LIBRARIAN_JSON))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+    monkeypatch.setattr("maestro.dispatcher.Path.cwd", lambda: tmp_path)
+
+    result = asyncio.run(server._librarian_impl({
+        "document_text": "hello", "query": "anything",
+    }))
+
+    assert mock_create.call_count == 0
+    assert len(result) == 1
+    assert "team.yaml at .maestro/team.yaml is invalid" in result[0].text
+
+    events = scan_log(tmp_path / ".maestro" / "logs" / "dispatch.jsonl")
+    assert len(events) == 1
+    assert events[0].event_type == "dispatch.refused.config_invalid"
+
+
+def test_reviewer_v0_0_2_env_only_fallback_path(server, monkeypatch, tmp_path):
+    from maestro.dispatch_log.reader import scan_log
+    import json as _json
+
+    mock_create = AsyncMock(return_value=_mock_deepseek_response(_VALID_REVIEWER_JSON))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+    monkeypatch.setattr("maestro.dispatcher.Path.cwd", lambda: tmp_path)
+
+    result = asyncio.run(server._reviewer_impl({
+        "spec": "spec", "code": "code", "language": "python",
+    }))
+
+    assert len(result) == 1
+    payload = _json.loads(result[0].text)
+    assert payload["_banner"].startswith("[reviewer dispatch — deepseek-v4-pro")
+    assert payload["verdict"] == "pass"
+
+    assert mock_create.call_count == 1
+    assert mock_create.call_args.kwargs["model"] == "deepseek-v4-pro"
+
+    events = scan_log(tmp_path / ".maestro" / "logs" / "dispatch.jsonl")
+    assert len(events) == 3
+    assert events[0].event_type == "dispatch.fallback.config_absent"
+    assert events[0].role == "reviewer"
+    assert events[1].event_type == "dispatch.start"
+    assert events[2].event_type == "dispatch.end"
+
+
+def test_reviewer_broken_team_yaml_refuses(server, monkeypatch, tmp_path):
+    import textwrap as _tw
+    from maestro.dispatch_log.reader import scan_log
+
+    (tmp_path / ".maestro").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".maestro" / "team.yaml").write_text(_tw.dedent("""\
+        schema_version: 1
+        roles:
+          coder:
+            member: alice
+            model: deepseek-v4-pro
+          librarian:
+            member: bob
+            model: deepseek-v4-flash
+          reviewer:
+            member: carol
+            model: "BAD CASE"
+          scribe:
+            member: dave
+            model: deepseek-v4-flash
+    """))
+
+    mock_create = AsyncMock(return_value=_mock_deepseek_response(_VALID_REVIEWER_JSON))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+    monkeypatch.setattr("maestro.dispatcher.Path.cwd", lambda: tmp_path)
+
+    result = asyncio.run(server._reviewer_impl({
+        "spec": "spec", "code": "code", "language": "python",
+    }))
+
+    assert mock_create.call_count == 0
+    assert len(result) == 1
+    assert "team.yaml at .maestro/team.yaml is invalid" in result[0].text
+
+    events = scan_log(tmp_path / ".maestro" / "logs" / "dispatch.jsonl")
+    assert len(events) == 1
+    assert events[0].event_type == "dispatch.refused.config_invalid"
+
+
+def test_scribe_v0_0_2_env_only_fallback_path(server, monkeypatch, tmp_path):
+    from maestro.dispatch_log.reader import scan_log
+    import json as _json
+
+    mock_create = AsyncMock(return_value=_mock_deepseek_response(_VALID_SCRIBE_JSON))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+    monkeypatch.setattr("maestro.dispatcher.Path.cwd", lambda: tmp_path)
+
+    result = asyncio.run(server._scribe_impl({
+        "diff": "some diff",
+        "issue_number": 1,
+        "issue_title": "t",
+        "issue_body": "b",
+        "convention": "c",
+    }))
+
+    assert len(result) == 1
+    payload = _json.loads(result[0].text)
+    assert payload["_banner"].startswith("[scribe dispatch — deepseek-v4-flash")
+    assert payload["commit_message"] == "msg"
+
+    assert mock_create.call_count == 1
+    assert mock_create.call_args.kwargs["model"] == "deepseek-v4-flash"
+
+    events = scan_log(tmp_path / ".maestro" / "logs" / "dispatch.jsonl")
+    assert len(events) == 3
+    assert events[0].event_type == "dispatch.fallback.config_absent"
+    assert events[0].role == "scribe"
+    assert events[1].event_type == "dispatch.start"
+    assert events[2].event_type == "dispatch.end"
+
+
+def test_scribe_broken_team_yaml_refuses(server, monkeypatch, tmp_path):
+    import textwrap as _tw
+    from maestro.dispatch_log.reader import scan_log
+
+    (tmp_path / ".maestro").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".maestro" / "team.yaml").write_text(_tw.dedent("""\
+        schema_version: 1
+        roles:
+          coder:
+            member: alice
+            model: deepseek-v4-pro
+          librarian:
+            member: bob
+            model: deepseek-v4-flash
+          reviewer:
+            member: carol
+            model: deepseek-v4-pro
+          scribe:
+            member: dave
+            model: "BAD CASE"
+    """))
+
+    mock_create = AsyncMock(return_value=_mock_deepseek_response(_VALID_SCRIBE_JSON))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+    monkeypatch.setattr("maestro.dispatcher.Path.cwd", lambda: tmp_path)
+
+    result = asyncio.run(server._scribe_impl({
+        "diff": "some diff", "issue_number": 1, "issue_title": "t",
+        "issue_body": "b", "convention": "c",
+    }))
+
+    assert mock_create.call_count == 0
+    assert len(result) == 1
+    assert "team.yaml at .maestro/team.yaml is invalid" in result[0].text
+
+    events = scan_log(tmp_path / ".maestro" / "logs" / "dispatch.jsonl")
+    assert len(events) == 1
+    assert events[0].event_type == "dispatch.refused.config_invalid"
