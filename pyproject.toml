@@ -26,3 +26,4 @@ exclude = ["tests*", "scripts*", "bootstrap*", "docs*"]
 
 [tool.setuptools.package-data]
 "maestro.webui" = ["templates/*.html", "static/vendor/*"]
+"maestro.scaffold.templates" = ["*.md", "gitignore", "maestro_gitignore"]
