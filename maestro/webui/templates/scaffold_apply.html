@@ -8,7 +8,14 @@
         </ul>
     </div>
 {% else %}
+    {% if succeeded > 0 %}
+    <meta http-equiv="refresh" content="3;url=/wizard">
+    {% endif %}
     <p>成功 {{ succeeded }} 个文件，失败 {{ failed }} 个文件</p>
+    {% if succeeded > 0 %}
+    <p class="autoredirect-hint">3 秒后跳转到团队配置...</p>
+    <a href="/wizard" class="button button-primary">立即配置团队</a>
+    {% endif %}
     <ul>
     {% for ev in events %}
         <li class="{{ ev.type }}">

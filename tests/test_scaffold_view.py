@@ -223,3 +223,67 @@ def test_apply_post_calls_upsert_only_when_plan_rows_nonempty(client, tmp_path, 
     )
     assert resp.status_code == 200
     assert calls == []
+
+
+# -- T2.8: wizard auto-launch after successful apply -----------------------
+
+def test_apply_success_includes_wizard_autoredirect(client, tmp_path, monkeypatch):
+    """succeeded > 0 → meta refresh to /wizard + manual fallback link."""
+    _stub_preflight_all_pass(monkeypatch)
+    resp = client.post(
+        "/scaffold/apply",
+        data={
+            "path": str(tmp_path),
+            "mode": "take_over",
+            "accepted_paths": [".maestro/.gitignore", "CLAUDE.md"],
+        },
+    )
+    assert resp.status_code == 200
+    html = resp.text
+    # Auto-redirect markup present
+    assert 'http-equiv="refresh"' in html
+    assert "url=/wizard" in html
+    # User-visible cue
+    assert "跳转到团队配置" in html
+    # Manual fallback link
+    assert 'href="/wizard"' in html
+    assert "立即配置团队" in html
+
+
+def test_apply_rejected_does_not_autoredirect(client, tmp_path, monkeypatch):
+    """Preflight rejection → no auto-redirect (user reads the rejection)."""
+    _stub_preflight_one_fail(monkeypatch)
+    resp = client.post(
+        "/scaffold/apply",
+        data={"path": str(tmp_path), "mode": "new_project", "accepted_paths": []},
+    )
+    assert resp.status_code == 200
+    html = resp.text
+    assert 'http-equiv="refresh"' not in html
+    assert "url=/wizard" not in html
+    assert "立即配置团队" not in html
+
+
+def test_apply_zero_succeeded_does_not_autoredirect(client, tmp_path, monkeypatch):
+    """All accepted files were CONFLICT → succeeded=0 → no redirect.
+
+    Pre-write CLAUDE.md with v=2 marker so engine marks it CONFLICT;
+    apply_plan emits FileFailed for it. PlanComplete reports
+    succeeded=0, failed=1 — user needs to see the failure list.
+    """
+    _stub_preflight_all_pass(monkeypatch)
+    from maestro.scaffold.templates import render_claude_md_standalone
+    (tmp_path / "CLAUDE.md").write_bytes(render_claude_md_standalone(section_version=2))
+    resp = client.post(
+        "/scaffold/apply",
+        data={
+            "path": str(tmp_path),
+            "mode": "take_over",
+            "accepted_paths": ["CLAUDE.md"],
+        },
+    )
+    assert resp.status_code == 200
+    html = resp.text
+    assert "成功 0 个文件" in html
+    assert 'http-equiv="refresh"' not in html
+    assert "url=/wizard" not in html
