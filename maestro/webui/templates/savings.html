@@ -109,6 +109,9 @@
     {% else %}
       <strong>disabled</strong>
     {% endif %}
+    {% if skipped_count and skipped_count > 0 %}
+    <br><span class="footnote">{{ skipped_count }} malformed row{{ "s" if skipped_count != 1 else "" }} skipped.</span>
+    {% endif %}
   </div>
 </body>
 </html>

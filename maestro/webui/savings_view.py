@@ -19,7 +19,7 @@ from bootstrap.savings import (
     filter_superseded,
     group_by_role,
     group_by_time,
-    read_rows,
+    read_rows_with_skipped,
     resolve_log_path,
 )
 
@@ -87,24 +87,19 @@ async def savings_view(request: Request) -> HTMLResponse:
 
     log_path, source = resolve_log_path()
 
-    # T7.4 will replace these 3 placeholders with proper templates
-    # (savings_disabled.html / savings_empty.html / savings_error.html).
-    # Keeping them inline + 200 here so T7.3's PR doesn't ship a route
-    # that 500s on degraded states.
     if source == "disabled":
-        return HTMLResponse(
-            "<p>Telemetry disabled (MAESTRO_DISPATCH_LOG=\"\"). "
-            "Proper banner lands in T7.4.</p>"
-        )
+        return templates.TemplateResponse(request, "savings_disabled.html", {})
     if source == "missing":
-        return HTMLResponse(
-            f"<p>No dispatch log at {log_path}. Empty-state CTA lands in T7.4.</p>"
+        return templates.TemplateResponse(
+            request, "savings_empty.html", {"log_path": str(log_path)}
         )
     try:
-        rows = read_rows(log_path)
+        rows, skipped_count = read_rows_with_skipped(log_path)
     except Exception as exc:
-        return HTMLResponse(
-            f"<p>Error reading {log_path}: {exc!s}. Error template lands in T7.4.</p>"
+        return templates.TemplateResponse(
+            request,
+            "savings_error.html",
+            {"log_path": str(log_path), "error": str(exc)},
         )
 
     rows = filter_superseded(rows)
@@ -122,5 +117,6 @@ async def savings_view(request: Request) -> HTMLResponse:
         "log_path": str(log_path),
         "last_dispatch": _last_dispatch_iso(rows),
         "telemetry_enabled": True,
+        "skipped_count": skipped_count,
     }
     return templates.TemplateResponse(request, "savings.html", ctx)
