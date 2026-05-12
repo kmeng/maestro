@@ -23,6 +23,7 @@ from bootstrap.savings import (
     group_by_task,
     group_by_time,
     read_rows,
+    read_rows_with_skipped,
     resolve_log_path,
 )
 
@@ -528,3 +529,32 @@ def test_resolve_log_path_missing_when_default_path_does_not_exist(monkeypatch, 
     path, source = resolve_log_path()
     assert path == fake_default
     assert source == "missing"
+
+
+# ---------------------------------------------------------------------------
+# read_rows_with_skipped (T7.4)
+# ---------------------------------------------------------------------------
+
+def test_read_rows_with_skipped_counts_malformed_json_and_bad_started_at(tmp_path):
+    """skipped count = JSON-decode failures + bad/missing started_at; comments + blanks excluded."""
+    path = tmp_path / "mixed.jsonl"
+    lines = [
+        "# header comment",
+        "",
+        json.dumps(_sample_row(row_id="ok-1")),
+        "not-json-at-all",
+        json.dumps(_sample_row(row_id="bad-dt", started_at="garbage")),
+        "   # indented comment",
+        json.dumps(_sample_row(row_id="ok-2")),
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    rows, skipped = read_rows_with_skipped(path)
+    assert [r["row_id"] for r in rows] == ["ok-1", "ok-2"]
+    assert skipped == 2  # 1 JSON decode failure + 1 bad started_at
+
+
+def test_read_rows_with_skipped_missing_file_returns_zero(tmp_path):
+    """Path doesn't exist → ([], 0). Never raises."""
+    rows, skipped = read_rows_with_skipped(tmp_path / "no-such.jsonl")
+    assert rows == []
+    assert skipped == 0

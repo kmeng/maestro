@@ -56,23 +56,22 @@ def _parse_dt(s: str) -> dt.datetime:
     return dt.datetime.fromisoformat(s)
 
 
-def read_rows(path: Path) -> list[dict]:
-    """Return enriched dispatch rows; empty / missing file returns [].
+def read_rows_with_skipped(path: Path) -> tuple[list[dict], int]:
+    """Like ``read_rows`` but also returns the count of malformed/skipped lines.
 
-    Skips blank lines and `#`-prefixed comments. Malformed JSON warns
-    to stderr and is skipped. Schema-version mismatches warn but the row
-    is still included.
+    skipped count = number of lines that failed to parse as JSON, plus
+    rows that parsed but had a missing or unparseable ``started_at``.
+    Blank lines and ``#``-prefixed comments are NOT counted.
 
-    Enrichment fields (prefixed with underscore so they don't collide
-    with the on-disk schema):
-      _started_at        datetime
-      _duration_seconds  float (sourced from row["wall_s"])
-      _token_count       int (sum of prompt+completion, falling back to total)
+    The Web UI savings page (T7.4) surfaces this count as a footnote
+    so users can tell when their JSONL has integrity issues; the
+    Markdown renderer ignores the count and uses ``read_rows``.
     """
     if not path.exists():
-        return []
+        return [], 0
 
     rows: list[dict] = []
+    skipped = 0
     with path.open("r", encoding="utf-8") as fh:
         for lineno, line in enumerate(fh, 1):
             stripped = line.strip()
@@ -86,6 +85,7 @@ def read_rows(path: Path) -> list[dict]:
                     f"⚠ skipping malformed JSON on line {lineno} of {path}",
                     file=sys.stderr,
                 )
+                skipped += 1
                 continue
 
             if obj.get("schema_version") != SCHEMA_VERSION_EXPECTED:
@@ -99,6 +99,7 @@ def read_rows(path: Path) -> list[dict]:
                 started = _parse_dt(obj["started_at"])
             except (KeyError, ValueError) as exc:
                 print(f"⚠ row {lineno}: bad started_at — {exc}", file=sys.stderr)
+                skipped += 1
                 continue
 
             obj["_started_at"] = started
@@ -115,6 +116,17 @@ def read_rows(path: Path) -> list[dict]:
                 obj["_token_count"] = 0
 
             rows.append(obj)
+    return rows, skipped
+
+
+def read_rows(path: Path) -> list[dict]:
+    """Return enriched dispatch rows; empty / missing file returns [].
+
+    Thin wrapper over ``read_rows_with_skipped`` that drops the count.
+    Preserves the T7.1 calling contract for callers that don't need
+    the malformed-row diagnostic.
+    """
+    rows, _ = read_rows_with_skipped(path)
     return rows
 
 

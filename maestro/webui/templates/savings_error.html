@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Maestro · Dispatch Savings — Error</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 720px; margin: 4em auto; padding: 0 1em; color: #222; }
+    h1 { margin-bottom: 0.25em; }
+    .banner { background: #fdecea; border-left: 4px solid #c0392b; padding: 1em 1.25em; border-radius: 4px; margin: 2em 0; line-height: 1.55; }
+    .banner h2 { margin: 0 0 0.5em 0; font-size: 1.05em; color: #c0392b; }
+    .banner p { margin: 0.5em 0; }
+    code { background: #fff; padding: 0.1em 0.4em; border-radius: 3px; font-size: 0.95em; }
+    pre { background: #fff; padding: 0.75em 1em; border-radius: 4px; overflow-x: auto; font-size: 0.9em; margin: 0.75em 0 0 0; }
+  </style>
+</head>
+<body>
+  <h1>Dispatch Savings</h1>
+  <div class="banner">
+    <h2>Could not read the dispatch log</h2>
+    <p>
+      The resolved path is <code>{{ log_path }}</code>, but reading it
+      raised the following error:
+    </p>
+    <pre>{{ error }}</pre>
+    <p>
+      Common causes: the path points to a directory rather than a file,
+      the file has wrong permissions, or the disk has an I/O fault.
+    </p>
+  </div>
+</body>
+</html>

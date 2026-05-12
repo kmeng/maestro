@@ -141,18 +141,62 @@ def test_savings_per_time_reverse_chrono(client, tmp_path, monkeypatch):
     assert sub.find("2026-05-11") < sub.find("2026-05-10")
 
 
-def test_savings_disabled_placeholder(client, monkeypatch):
-    """MAESTRO_DISPATCH_LOG="" → 200 placeholder (proper banner in T7.4)."""
+def test_savings_disabled_renders_banner(client, monkeypatch):
+    """MAESTRO_DISPATCH_LOG="" → 200 + savings_disabled.html banner."""
     monkeypatch.setenv("MAESTRO_DISPATCH_LOG", "")
     resp = client.get("/savings")
     assert resp.status_code == 200
-    assert "disabled" in resp.text.lower()
+    body = resp.text
+    assert "Telemetry is disabled" in body
+    assert "MAESTRO_DISPATCH_LOG" in body
+    # Methodology link present
+    assert "savings-methodology.md" in body
 
 
-def test_savings_missing_placeholder(client, tmp_path, monkeypatch):
-    """Path resolves but file does not exist → 200 placeholder."""
+def test_savings_empty_renders_cta(client, tmp_path, monkeypatch):
+    """Path resolves but file does not exist → 200 + savings_empty.html CTA."""
     nonexistent = tmp_path / "no-such.jsonl"
     monkeypatch.setenv("MAESTRO_DISPATCH_LOG", str(nonexistent))
     resp = client.get("/savings")
     assert resp.status_code == 200
-    assert "No dispatch log" in resp.text
+    body = resp.text
+    assert "No dispatches recorded yet" in body
+    # CTA mentions the 4 worker roles
+    assert "coder" in body and "librarian" in body and "reviewer" in body and "scribe" in body
+    # Path is surfaced for transparency
+    assert str(nonexistent) in body
+
+
+def test_savings_error_renders_diagnostic(client, tmp_path, monkeypatch):
+    """Path points at a directory → read raises IsADirectoryError → 200 + error template."""
+    bad_path = tmp_path / "is-a-dir"
+    bad_path.mkdir()
+    monkeypatch.setenv("MAESTRO_DISPATCH_LOG", str(bad_path))
+    resp = client.get("/savings")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "Could not read the dispatch log" in body
+    assert str(bad_path) in body
+    # Some form of the underlying exception text should appear in the <pre> block
+    assert "directory" in body.lower() or "errno" in body.lower()
+
+
+def test_savings_malformed_rows_footnote(client, tmp_path, monkeypatch):
+    """Mixed valid + malformed rows → happy template + 'N malformed row(s) skipped' footnote."""
+    log = tmp_path / "mixed.jsonl"
+    valid_row = _sample_row(row_id="ok", started_at="2026-05-10T08:00:00Z")
+    lines = [
+        json.dumps(valid_row),
+        "this-is-not-json",
+        json.dumps(_sample_row(row_id="bad-dt", started_at="garbage")),
+    ]
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    monkeypatch.setenv("MAESTRO_DISPATCH_LOG", str(log))
+    resp = client.get("/savings")
+    assert resp.status_code == 200
+    body = resp.text
+    # Happy template still rendered (the 1 valid row produces real content)
+    assert "Dispatch Savings" in body
+    assert "Per-role" in body
+    # Footnote with the skipped count (2 = JSON-decode + bad-started_at)
+    assert "2 malformed rows skipped" in body
