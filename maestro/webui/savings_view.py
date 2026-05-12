@@ -2,7 +2,7 @@
 
 Renders the per-role + per-time savings tables for the *general user*
 of maestro, reading the local dispatch-log.jsonl via the shared
-bootstrap.savings calc layer.
+maestro.savings calc layer.
 
 Per design 65 §2.1 / §2.2 / §3.2. T7.3 ships the happy path; T7.4
 will replace the three degraded-state placeholders with proper
@@ -14,7 +14,7 @@ from typing import Optional
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
-from bootstrap.savings import (
+from maestro.savings import (
     compute_costs,
     filter_superseded,
     group_by_role,

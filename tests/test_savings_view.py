@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from bootstrap.savings import (
+from maestro.savings import (
     compute_costs,
     filter_superseded,
     group_by_role,

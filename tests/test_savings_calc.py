@@ -1,4 +1,4 @@
-"""Pure-calc tests for bootstrap/savings.py.
+"""Pure-calc tests for maestro/savings.py.
 
 Migrated from tests/test_render_savings.py per T7.1: the 4 pure-calc
 tests (3 supersede + 1 null-tokens) moved here, plus new coverage for
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from bootstrap.savings import (
+from maestro.savings import (
     PROVIDER_RATES_USD_PER_M_TOKENS,
     _DEFAULT_DISPATCH_LOG_PATH,
     _parse_dt,
@@ -487,7 +487,7 @@ def test_resolve_log_path_default_when_unset(monkeypatch, tmp_path):
     # touch the real file; monkeypatch _DEFAULT_DISPATCH_LOG_PATH instead.
     fake_default = tmp_path / "default.jsonl"
     fake_default.write_text("", encoding="utf-8")
-    monkeypatch.setattr("bootstrap.savings._DEFAULT_DISPATCH_LOG_PATH", fake_default)
+    monkeypatch.setattr("maestro.savings._DEFAULT_DISPATCH_LOG_PATH", fake_default)
     path, source = resolve_log_path()
     assert path == fake_default
     assert source == "default"
@@ -525,7 +525,7 @@ def test_resolve_log_path_missing_when_default_path_does_not_exist(monkeypatch, 
     """Env unset + default does not exist → source='missing'."""
     monkeypatch.delenv("MAESTRO_DISPATCH_LOG", raising=False)
     fake_default = tmp_path / "no-such-file.jsonl"
-    monkeypatch.setattr("bootstrap.savings._DEFAULT_DISPATCH_LOG_PATH", fake_default)
+    monkeypatch.setattr("maestro.savings._DEFAULT_DISPATCH_LOG_PATH", fake_default)
     path, source = resolve_log_path()
     assert path == fake_default
     assert source == "missing"

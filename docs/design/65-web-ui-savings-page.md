@@ -137,10 +137,16 @@ calculation (read JSONL → groups + costs) and Markdown rendering. The
 Web UI needs the calculation half but not the Markdown half.
 
 **Refactor**: extract pure-calc functions into a new module
-`bootstrap/savings.py`. Both `scripts/render_savings.py` and the Web UI
+`maestro/savings.py`. Both `scripts/render_savings.py` and the Web UI
 route import from it.
 
-Functions moving to `bootstrap/savings.py`:
+> Note: T7.1 initially placed this module at `bootstrap/savings.py`.
+> Relocated to `maestro/savings.py` in fix #86 because the installed
+> wheel excludes `bootstrap/` (per `pyproject.toml` setuptools
+> exclude rule), so the Web UI's installed entry point could not
+> import it. All §3 references below have been updated.
+
+Functions moving to `maestro/savings.py`:
 
 - `_parse_dt(s)` — datetime parser
 - `read_rows(path)` — JSONL reader, comment/blank tolerance
@@ -171,23 +177,23 @@ file. This is the regression test for the extraction.
 ### 3.2 Web UI route
 
 ```python
-# bootstrap/web/routes/savings.py  (path TBD with Epic 0)
+# maestro/webui/savings_view.py
 
 def savings_view(request):
-    log_path, source = bootstrap.savings.resolve_log_path()
+    log_path, source = maestro.savings.resolve_log_path()
     if source == "disabled":
         return render_template("savings_disabled.html")
     if source == "missing":
         return render_template("savings_empty.html", path=log_path)
     try:
-        rows = bootstrap.savings.read_rows(log_path)
+        rows = maestro.savings.read_rows(log_path)
     except Exception as e:
         return render_template("savings_error.html", path=log_path, error=str(e))
-    rows = bootstrap.savings.filter_superseded(rows)
+    rows = maestro.savings.filter_superseded(rows)
     ctx = {
         "headline": _headline_ctx(rows),
-        "per_role": bootstrap.savings.group_by_role(rows),
-        "per_time": bootstrap.savings.group_by_time(rows, "day"),
+        "per_role": maestro.savings.group_by_role(rows),
+        "per_time": maestro.savings.group_by_time(rows, "day"),
         "log_path": log_path,
         "telemetry_enabled": True,
     }
@@ -249,13 +255,16 @@ guidance).
 
 ## 5. Affected modules
 
-- **New**: `bootstrap/savings.py` — extracted calc core
+- **New**: `maestro/savings.py` — extracted calc core (relocated from
+  `bootstrap/savings.py` in fix #86)
 - **Modified**: `scripts/render_savings.py` — switch to importing from
-  `bootstrap.savings`; remove duplicated functions; preserve byte-identical
+  `maestro.savings`; remove duplicated functions; preserve byte-identical
   output as the regression contract
-- **New**: web route + templates (paths follow Epic 0's choices —
-  expected `bootstrap/web/routes/savings.py` and
-  `bootstrap/web/templates/savings*.html`)
+- **New**: web route + templates at `maestro/webui/savings_view.py`
+  and `maestro/webui/templates/savings*.html` (following Epic 0's
+  established `maestro/webui/` layout for view modules + their
+  Jinja2 templates; speculative `bootstrap/web/` path in earlier
+  drafts of this design was superseded once T0.4 landed)
 - **New**: `tests/test_savings_calc.py`, `tests/test_savings_view.py`
 - **No edit**: `docs/savings.md`, `docs/savings-methodology.md`,
   `docs/data/dispatch-log.jsonl` — content / format unchanged
@@ -278,11 +287,12 @@ guidance).
 To be filed as sub-issues under #65 after design approval:
 
 1. **T7.1** — Extract calc core from `render_savings.py` to
-   `bootstrap/savings.py`. Migrate tests. Determinism gate: re-rendered
-   `docs/savings.md` is byte-identical. **No Web UI dependency** — can
-   run before Epic 0 lands.
+   `maestro/savings.py` (originally placed at `bootstrap/savings.py`;
+   relocated to `maestro/` in fix #86 — see §3.1 note). Migrate tests.
+   Determinism gate: re-rendered `docs/savings.md` is byte-identical.
+   **No Web UI dependency** — can run before Epic 0 lands.
 2. **T7.2** — Add `group_by_time(rows, "day")` + `resolve_log_path()` to
-   `bootstrap/savings.py`. Tests. Standalone calc additions.
+   `maestro/savings.py`. Tests. Standalone calc additions.
 3. **T7.3** — Web UI route `GET /savings` + happy-path template (header
    + per-role + per-time + footer). Depends on Epic 0 / T0.4.
 4. **T7.4** — Empty / disabled / error state templates + tests. Depends

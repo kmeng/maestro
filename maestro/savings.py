@@ -5,8 +5,9 @@ Web UI route GET /savings (Epic 7, T7.3) consume this module. The
 module is responsible for: parsing JSONL rows, filtering superseded
 entries, computing per-row costs, and aggregating by task / by role.
 
-Per design 65 §3.1. T7.2 will extend this module with group_by_time
-and resolve_log_path.
+Per design 65 §3.1 (updated: module relocated from bootstrap/ to
+maestro/ in fix #86 — the installed wheel excludes bootstrap/, so
+the Web UI's installed entry point could not import it).
 
 Determinism contract: given the same input rows, all functions in
 this module produce byte-identical output across runs (stable sort

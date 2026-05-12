@@ -195,5 +195,5 @@ def test_atomic_write_basic(tmp_path: Path):
 
 # Pure-calc tests (_parse_dt, read_rows surface, filter_superseded,
 # compute_costs, group_by_*) live in tests/test_savings_calc.py since
-# T7.1 — they exercise the bootstrap.savings module directly. This
+# T7.1 — they exercise the maestro.savings module directly. This
 # file keeps the markdown-rendering coverage that depends on render_*.
