@@ -31,6 +31,7 @@ from bootstrap.savings import (
     group_by_role,
     group_by_task,
     read_rows,
+    resolve_log_path,
 )
 
 # ---------------------------------------------------------------------------
@@ -38,8 +39,7 @@ from bootstrap.savings import (
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = _PROJECT_ROOT
-JSONL_PATH = REPO_ROOT / "docs" / "data" / "dispatch-log.jsonl"
-OUT_PATH   = REPO_ROOT / "docs" / "savings.md"
+OUT_PATH  = REPO_ROOT / "docs" / "savings.md"
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +193,12 @@ def atomic_write(path: Path, content: str) -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    rows = read_rows(JSONL_PATH)
+    # Honors MAESTRO_DISPATCH_LOG via the shared resolver (T7.2). When
+    # the env var is unset, this falls back to the project's canonical
+    # default — same path the script used to hardcode, so the
+    # determinism gate stays valid.
+    jsonl_path, _source = resolve_log_path()
+    rows = read_rows(jsonl_path)
     rows = filter_superseded(rows)
     for row in rows:
         row["_cost"] = compute_costs(row)

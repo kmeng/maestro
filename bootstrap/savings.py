@@ -15,6 +15,7 @@ keys, no datetime.now(), no random iteration).
 
 import datetime as dt
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -34,6 +35,13 @@ PROVIDER_RATES_USD_PER_M_TOKENS: dict[str, dict[str, float]] = {
 OPUS_MODEL = "claude-opus-4-7"
 
 SCHEMA_VERSION_EXPECTED = 1
+
+# Default dispatch-log location. Mirrors
+# bootstrap/maestro_server.py:_DEFAULT_DISPATCH_LOG_PATH so the writer
+# (server) and the readers (renderer + Web UI) agree by construction.
+_DEFAULT_DISPATCH_LOG_PATH = (
+    Path(__file__).resolve().parent.parent / "docs" / "data" / "dispatch-log.jsonl"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -311,3 +319,106 @@ def group_by_role(rows: list[dict]) -> tuple[list[dict], int]:
             },
         })
     return result, excluded
+
+
+# ---------------------------------------------------------------------------
+# 6. group_by_time (T7.2)
+# ---------------------------------------------------------------------------
+
+def group_by_time(rows: list[dict], granularity: str = "day") -> list[dict]:
+    """Aggregate enriched rows by UTC calendar day; reverse-chronological.
+
+    Per design 65 §2.2.3: the Web UI's per-time table groups dispatches
+    by day (UTC) to keep determinism aligned with how `started_at` is
+    stored. The granularity parameter is forward-compatible but only
+    "day" is implemented in v0.0.3 (week/month deferred per Epic 7 body).
+
+    Each output entry mirrors the group_by_role shape (rows + nested
+    stats) so Web UI and Markdown templates can share a row renderer
+    if useful later.
+    """
+    if granularity != "day":
+        raise ValueError(
+            f"group_by_time granularity must be 'day' in v0.0.3, got {granularity!r}"
+        )
+
+    groups: dict[str, list[dict]] = {}
+    for row in rows:
+        # _started_at is a tz-aware datetime (see read_rows). Convert
+        # to UTC before extracting the calendar day so the bucket key
+        # is independent of the input timezone offset.
+        key = row["_started_at"].astimezone(dt.timezone.utc).strftime("%Y-%m-%d")
+        groups.setdefault(key, []).append(row)
+
+    result = []
+    for date_key, group_rows in groups.items():
+        cnt = len(group_rows)
+        total_tokens = sum(r["_token_count"] for r in group_rows)
+        total_wall = sum(r["_duration_seconds"] for r in group_rows)
+        total_worker = 0.0
+        total_opus = 0.0
+        for r in group_rows:
+            cost = r.get("_cost")
+            if cost is not None:
+                total_worker += cost["worker_total_usd"]
+                total_opus += cost["opus_total_usd"]
+
+        result.append({
+            "date": date_key,
+            "rows": group_rows,
+            "stats": {
+                "count": cnt,
+                "total_tokens": total_tokens,
+                "total_wall": total_wall,
+                "total_worker_usd": total_worker,
+                "total_opus_usd": total_opus,
+                "saved_usd": total_opus - total_worker,
+                "saved_pct": ((total_opus - total_worker) / total_opus * 100)
+                              if total_opus > 0 else 0.0,
+            },
+        })
+
+    # Reverse-chronological (most recent day first). YYYY-MM-DD strings
+    # sort correctly lexicographically.
+    result.sort(key=lambda g: g["date"], reverse=True)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 7. resolve_log_path (T7.2)
+# ---------------------------------------------------------------------------
+
+def resolve_log_path() -> tuple[Path, str]:
+    """Resolve dispatch-log path + classification for the savings UI.
+
+    Honors MAESTRO_DISPATCH_LOG per Epic 6 / design 56 §2.2 semantics:
+    - env var unset → default path
+    - env var empty string → telemetry disabled
+    - env var non-empty → that path
+
+    Returns ``(path, source)`` where ``source`` is one of:
+    - ``"default"`` — env unset, default path resolved AND exists on disk
+    - ``"env"`` — env set to non-empty, that path resolved AND exists
+    - ``"missing"`` — path resolved (default or env) but file does NOT exist
+    - ``"disabled"`` — env explicitly empty string; telemetry off
+
+    Never raises. Web UI route uses ``source`` to pick the template
+    (happy / empty / disabled); T7.4 wires the error template for the
+    distinct "file exists but unreadable" case via read_rows() raising.
+    """
+    raw = os.environ.get("MAESTRO_DISPATCH_LOG")
+
+    if raw is None:
+        path = _DEFAULT_DISPATCH_LOG_PATH
+        source = "default"
+    elif raw == "":
+        # Disabled — surface the default path for display only; the
+        # caller branches on source, not path.
+        return _DEFAULT_DISPATCH_LOG_PATH, "disabled"
+    else:
+        path = Path(raw)
+        source = "env"
+
+    if not path.exists():
+        source = "missing"
+    return path, source

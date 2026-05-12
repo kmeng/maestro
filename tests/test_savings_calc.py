@@ -15,12 +15,15 @@ import pytest
 
 from bootstrap.savings import (
     PROVIDER_RATES_USD_PER_M_TOKENS,
+    _DEFAULT_DISPATCH_LOG_PATH,
     _parse_dt,
     compute_costs,
     filter_superseded,
     group_by_role,
     group_by_task,
+    group_by_time,
     read_rows,
+    resolve_log_path,
 )
 
 
@@ -395,3 +398,133 @@ def test_provider_rates_has_known_models():
         assert "input" in rates and "output" in rates
         assert isinstance(rates["input"], float)
         assert isinstance(rates["output"], float)
+
+
+# ---------------------------------------------------------------------------
+# group_by_time (T7.2)
+# ---------------------------------------------------------------------------
+
+def test_group_by_time_multi_day_reverse_chrono():
+    """Rows across 3 calendar days → 3 entries sorted newest-first."""
+    rows = [
+        _enrich(_sample_row(row_id="d1a", started_at="2026-05-10T08:00:00Z")),
+        _enrich(_sample_row(row_id="d1b", started_at="2026-05-10T20:00:00Z")),
+        _enrich(_sample_row(row_id="d2a", started_at="2026-05-11T12:00:00Z")),
+        _enrich(_sample_row(row_id="d3a", started_at="2026-05-12T01:00:00Z")),
+    ]
+    groups = group_by_time(rows)
+    assert [g["date"] for g in groups] == ["2026-05-12", "2026-05-11", "2026-05-10"]
+    # 2026-05-10 bucket holds 2 rows
+    may10 = next(g for g in groups if g["date"] == "2026-05-10")
+    assert may10["stats"]["count"] == 2
+
+
+def test_group_by_time_single_day():
+    """Multiple rows on one day → one group with full aggregates."""
+    rows = [
+        _enrich(_sample_row(row_id="a", started_at="2026-05-12T01:00:00Z",
+                            prompt_tokens=100, completion_tokens=50, wall_s=1.0)),
+        _enrich(_sample_row(row_id="b", started_at="2026-05-12T23:59:00Z",
+                            prompt_tokens=200, completion_tokens=100, wall_s=2.0)),
+    ]
+    groups = group_by_time(rows)
+    assert len(groups) == 1
+    g = groups[0]
+    assert g["date"] == "2026-05-12"
+    assert g["stats"]["count"] == 2
+    assert g["stats"]["total_tokens"] == 450
+    assert g["stats"]["total_wall"] == 3.0
+
+
+def test_group_by_time_empty_rows():
+    """Empty input → empty list (no raise)."""
+    assert group_by_time([]) == []
+
+
+def test_group_by_time_stats_keys_match_design():
+    """Web UI consumer contract: stats dict keys per design 65 §2.2.3."""
+    rows = [_enrich(_sample_row())]
+    g = group_by_time(rows)[0]
+    expected_keys = {
+        "count", "total_tokens", "total_wall",
+        "total_worker_usd", "total_opus_usd",
+        "saved_usd", "saved_pct",
+    }
+    assert set(g["stats"].keys()) == expected_keys
+
+
+def test_group_by_time_granularity_week_raises():
+    """granularity='week' → ValueError (forward-compat sig without speculation)."""
+    with pytest.raises(ValueError, match="day"):
+        group_by_time([], granularity="week")
+
+
+def test_group_by_time_granularity_arbitrary_raises():
+    """granularity='month' or anything else → ValueError."""
+    with pytest.raises(ValueError):
+        group_by_time([], granularity="month")
+
+
+def test_group_by_time_tz_normalized_to_utc():
+    """Non-UTC offset _started_at still buckets by UTC calendar day."""
+    # 2026-05-10T23:00:00-04:00 == 2026-05-11T03:00:00Z (UTC day = 05-11)
+    rows = [_enrich(_sample_row(
+        row_id="tz", started_at="2026-05-10T23:00:00-04:00",
+    ))]
+    groups = group_by_time(rows)
+    assert groups[0]["date"] == "2026-05-11"
+
+
+# ---------------------------------------------------------------------------
+# resolve_log_path (T7.2)
+# ---------------------------------------------------------------------------
+
+def test_resolve_log_path_default_when_unset(monkeypatch, tmp_path):
+    """Env unset + default exists → source='default'."""
+    monkeypatch.delenv("MAESTRO_DISPATCH_LOG", raising=False)
+    # Make the default exist by writing to it directly. We don't want to
+    # touch the real file; monkeypatch _DEFAULT_DISPATCH_LOG_PATH instead.
+    fake_default = tmp_path / "default.jsonl"
+    fake_default.write_text("", encoding="utf-8")
+    monkeypatch.setattr("bootstrap.savings._DEFAULT_DISPATCH_LOG_PATH", fake_default)
+    path, source = resolve_log_path()
+    assert path == fake_default
+    assert source == "default"
+
+
+def test_resolve_log_path_env_when_set(monkeypatch, tmp_path):
+    """Env set to a real path → source='env'."""
+    p = tmp_path / "custom.jsonl"
+    p.write_text("", encoding="utf-8")
+    monkeypatch.setenv("MAESTRO_DISPATCH_LOG", str(p))
+    path, source = resolve_log_path()
+    assert path == p
+    assert source == "env"
+
+
+def test_resolve_log_path_disabled_when_empty(monkeypatch):
+    """Env explicitly '' → source='disabled' (path is the default sentinel)."""
+    monkeypatch.setenv("MAESTRO_DISPATCH_LOG", "")
+    path, source = resolve_log_path()
+    assert source == "disabled"
+    # Display path defaults to the canonical location; caller branches on source
+    assert path == _DEFAULT_DISPATCH_LOG_PATH
+
+
+def test_resolve_log_path_missing_when_env_path_does_not_exist(monkeypatch, tmp_path):
+    """Env set but path does not exist → source='missing', path preserved."""
+    nonexistent = tmp_path / "does-not-exist.jsonl"
+    monkeypatch.setenv("MAESTRO_DISPATCH_LOG", str(nonexistent))
+    path, source = resolve_log_path()
+    assert path == nonexistent
+    assert source == "missing"
+
+
+def test_resolve_log_path_missing_when_default_path_does_not_exist(monkeypatch, tmp_path):
+    """Env unset + default does not exist → source='missing'."""
+    monkeypatch.delenv("MAESTRO_DISPATCH_LOG", raising=False)
+    fake_default = tmp_path / "no-such-file.jsonl"
+    monkeypatch.setattr("bootstrap.savings._DEFAULT_DISPATCH_LOG_PATH", fake_default)
+    path, source = resolve_log_path()
+    assert path == fake_default
+    assert source == "missing"
