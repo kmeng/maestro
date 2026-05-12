@@ -42,10 +42,12 @@ app.include_router(dispatch_log_router)
 from maestro.webui.history_view import router as history_router  # noqa: E402
 from maestro.webui.live_view import router as live_router  # noqa: E402
 from maestro.webui.problem_panel import router as problem_panel_router  # noqa: E402
+from maestro.webui.savings_view import router as savings_router  # noqa: E402
 
 app.include_router(history_router)
 app.include_router(live_router)
 app.include_router(problem_panel_router)
+app.include_router(savings_router)
 
 _STATIC_DIR = Path(__file__).parent / "static"
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
