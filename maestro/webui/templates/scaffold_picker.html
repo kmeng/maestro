@@ -1,0 +1,12 @@
+<h2>新建或接入项目</h2>
+<form action="/scaffold/plan" method="get">
+    <label>项目路径
+        <input name="path" required placeholder="/absolute/path/to/project">
+    </label>
+    <fieldset>
+        <legend>模式</legend>
+        <label><input type="radio" name="mode" value="new_project" checked> 新建项目（空目录）</label>
+        <label><input type="radio" name="mode" value="take_over"> 接入现有项目（git 仓库）</label>
+    </fieldset>
+    <button type="submit">查看计划</button>
+</form>

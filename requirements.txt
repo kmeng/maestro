@@ -1,0 +1,6 @@
+# Web UI process dependencies (separate from bootstrap/requirements.txt for MCP server)
+fastapi
+uvicorn
+sse-starlette
+jinja2
+pyyaml

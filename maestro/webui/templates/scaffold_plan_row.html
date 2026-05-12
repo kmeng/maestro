@@ -1,0 +1,21 @@
+{% if row.op == 'APPEND_DELIMITED' %}
+<div class="drill-down">
+    <h4>将追加以下内容到 {{ row.path }}</h4>
+    <pre class="diff-added">{{ wrapped_section }}</pre>
+    {% if existing_content %}
+    <h4>当前文件内容（保留不变）</h4>
+    <pre class="diff-existing">{{ existing_content }}</pre>
+    {% endif %}
+</div>
+{% elif row.op == 'CONFLICT' %}
+<div class="drill-down conflict">
+    <h4>冲突原因</h4>
+    <p>{{ conflict_reason_chinese }}</p>
+    <a href="vscode://file/{{ path }}/{{ row.path }}" class="button">打开文件</a>
+    <p class="hint">编辑文件后请重新生成计划查看变化（暂无"跳过此文件"按钮——v0.0.3 的策略是用户编辑文件直至冲突消失，详见 design 14 D3）。</p>
+</div>
+{% else %}
+<div class="drill-down">
+    <p>{{ row.detail }}</p>
+</div>
+{% endif %}

@@ -23,7 +23,9 @@ When in doubt, follow this document. When this document is wrong, update it befo
 4. APPROVAL     Maintainer approves design before any code is written
        ↓
 5. BREAKDOWN    Split into small closed loops, ~30min–2h each
-                → tracked as checkboxes in the issue
+                → tracked as sub-issues under the epic; each
+                  sub-issue body follows the briefing template
+                  (§ Task tracking)
        ↓
 6. IMPLEMENT    One task = one branch = one PR
                 Each PR keeps the system runnable
@@ -55,6 +57,63 @@ This means:
 - PR 2: migrate one caller to new schema
 - PR 3: migrate remaining callers
 - PR 4: remove deprecated old schema
+
+---
+
+## Task tracking
+
+Tasks live as **sub-issues under their parent epic**. GitHub's sub-issues feature (GA 2025) provides parent→child issue hierarchy natively — the parent issue auto-displays "N of M sub-issues completed," each sub-issue has its own id and can be closed independently by `Closes #N` in a PR.
+
+### Briefing template
+
+Each sub-issue body follows this template. The body is the *task's contract*; PRs satisfy it.
+
+````markdown
+## Goal
+
+[One paragraph: what this task achieves once merged.]
+
+## Design references (mandatory reading)
+
+- §design: [docs/design/<file>.md — § Section name]
+- §ADR: [docs/adr/<file>.md — § Section name]
+- Parent epic: #<epic-issue-number>
+
+## Scope
+
+What this task does:
+- [...]
+
+What this task explicitly does not do:
+- [...]
+
+## Acceptance criteria
+
+- [ ] [Enumerated, testable criterion 1]
+- [ ] [Enumerated, testable criterion 2]
+- ...
+
+## Test plan
+
+- Unit: [test file paths and what they cover]
+- Smoke: [manual verification steps where applicable]
+
+## Estimate
+
+~Nh
+
+## Dependencies
+
+- None / #<other-task> / [list]
+````
+
+### Creating sub-issues
+
+`gh` CLI (as of 2.89.0) does not have a `gh sub-issue` subcommand. Sub-issue creation uses `gh api` against the REST endpoint `POST /repos/{owner}/{repo}/issues/{parent}/sub_issues` with the child issue's internal `id` (not its number). A small helper script (e.g., `scripts/create_subissue.sh`) is the recommended path; the script body is workflow tooling, not governance content.
+
+### What checkboxes are still for
+
+Checkbox lists inside an issue or design-doc body are still used for **acceptance criteria** within a single sub-issue's briefing, and for **Definition of Done** within a single PR's description. They are no longer used for task lists across multiple PRs — that role belongs to sub-issues.
 
 ---
 
@@ -128,8 +187,13 @@ Use the model name actually responsible. Multiple co-authors are allowed.
 
 ## Pull Request rules
 
-- One PR = one closed loop
-- PR description must include: linked issue, what changed, how to verify
+- One PR = one closed loop = one task sub-issue closed
+- PR description must include:
+  - `Implements: #<sub-issue-number>` (the task being closed)
+  - `Closes #<sub-issue-number>` on its own line in plain prose (per the auto-close phrasing rule below)
+  - `Design citation: docs/design/<file>.md — § Section` (the design section being implemented)
+  - **Acceptance-criteria checklist** copied from the sub-issue body, with each item ticked and a one-line note on how it is verified
+  - Test results / smoke output (paste the relevant lines)
 - Squash-merge to main; no merge commits in main
 - PR > 400 lines: justify in the description or split
 
@@ -238,6 +302,19 @@ Bugs follow the same lifecycle, with one addition: **a failing test must exist b
 This is non-negotiable. A bug without a regression test is a bug that will come back.
 
 **Exception**: bugs that cannot be tested in CI (e.g. flaky external API behavior). Document in `docs/known-issues.md` and add defensive code with a comment linking to the doc.
+
+### Bug as an independent issue
+
+A bug is filed as its **own independent issue**, not as a sub-issue of any task. The bug issue body includes:
+
+- Provenance: `Found while implementing #<task-issue>` or `Regression in #<task-issue>` (link back to the task or epic where the bug originated, when known).
+- Reproduction steps.
+- The expected vs actual behavior.
+- A reference to the failing test once it exists (per the protocol above).
+
+The PR that fixes the bug uses `Closes #<bug-issue>` on its own line in plain prose, the same auto-close phrasing rule as for tasks.
+
+When labels are introduced, bug issues carry the `bug` label.
 
 ---
 

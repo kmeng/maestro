@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Maestro 团队</title>
+  <script src="/static/vendor/htmx.min.js"></script>
+  <style>
+    body { font-family: system-ui, "Noto Sans CJK SC", sans-serif; margin: 2rem; color: #222; }
+    h1 { margin-bottom: 0.5rem; }
+    .link-secondary { font-size: 0.9rem; color: #555; }
+    .banner { background: #fef3c7; border: 1px solid #f59e0b; padding: 0.75rem; margin: 1rem 0; border-radius: 4px; }
+    .banner-error { background: #fee2e2; border-color: #ef4444; color: #b91c1c; }
+    .reason { background: #f9fafb; padding: 1rem; white-space: pre-wrap; font-family: monospace; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid #ddd; }
+    .muted { color: #999; }
+    input { padding: 0.25rem; }
+    .field-error { color: #ef4444; display: block; font-size: 0.85rem; margin-top: 0.25rem; }
+    button, .button { margin-right: 0.35rem; cursor: pointer; padding: 0.3em 0.8em; border: 1px solid #ccc; background: #f5f5f5; border-radius: 3px; text-decoration: none; color: inherit; display: inline-block; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #1a1a1a; color: #eee; }
+      .reason { background: #2a2a2a; }
+      th, td { border-bottom-color: #444; }
+      button, .button { background: #333; border-color: #555; color: #eee; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Maestro 团队</h1>
+    <a href="/wizard" class="link-secondary">重新组建团队</a>
+  </header>
+
+  {% if missing %}
+    <div class="banner">尚未组建团队</div>
+    <a href="/wizard" class="button">立即组建</a>
+  {% elif invalid %}
+    <div class="banner banner-error">team.yaml 配置无效，请通过向导修复</div>
+    <pre class="reason">{{ invalid_reason }}</pre>
+    <a href="/wizard" class="button">重新组建</a>
+  {% else %}
+    <table id="team-catalog-table">
+      <thead>
+        <tr><th>角色</th><th>成员名</th><th>模型</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr id="row-architect" class="row-architect">
+          <td>架构师 / Architect</td>
+          <td colspan="2">你的 Claude Code 主会话</td>
+          <td><span class="muted">不可配置</span></td>
+        </tr>
+        {% for role in role_order %}
+          {% with entry=rows[role], mode="view", field_errors={} %}
+            {% include "team_catalog_row.html" %}
+          {% endwith %}
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  <p style="margin-top: 2rem;">
+    <a href="/" class="link-secondary">返回主页</a>
+  </p>
+
+  <footer style="margin-top: 2rem;">
+    <p style="font-size: 0.85rem; color: #888;">v{{ version }}</p>
+  </footer>
+</body>
+</html>

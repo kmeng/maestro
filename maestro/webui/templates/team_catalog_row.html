@@ -1,0 +1,21 @@
+<tr id="row-{{ role }}" hx-target="this" hx-swap="outerHTML">
+  <td>{{ role_titles[role] }}</td>
+  {% if mode == "edit" %}
+    <td>
+      <input name="member" value="{{ entry.member }}">
+      {% if field_errors.get('member') %}<span class="field-error">{{ field_errors['member'] }}</span>{% endif %}
+    </td>
+    <td>
+      <input name="model" value="{{ entry.model }}">
+      {% if field_errors.get('model') %}<span class="field-error">{{ field_errors['model'] }}</span>{% endif %}
+    </td>
+    <td>
+      <button hx-post="/team/edit/{{ role }}" hx-include="closest tr">保存</button>
+      <button hx-get="/team/row/{{ role }}">取消</button>
+    </td>
+  {% else %}
+    <td>{{ entry.member }}</td>
+    <td>{{ entry.model }}</td>
+    <td><button hx-get="/team/edit/{{ role }}">编辑</button></td>
+  {% endif %}
+</tr>

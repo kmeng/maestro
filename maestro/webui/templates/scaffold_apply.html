@@ -1,0 +1,30 @@
+<h2>应用结果</h2>
+{% if rejected %}
+    <div class="error-banner">
+        <h3>计划被拒绝</h3>
+        <p>原因：前置检查失败</p>
+        <ul>
+            {% for check in rejected_checks %}<li>{{ check.message }}</li>{% endfor %}
+        </ul>
+    </div>
+{% else %}
+    {% if succeeded > 0 %}
+    <meta http-equiv="refresh" content="3;url=/wizard">
+    {% endif %}
+    <p>成功 {{ succeeded }} 个文件，失败 {{ failed }} 个文件</p>
+    {% if succeeded > 0 %}
+    <p class="autoredirect-hint">3 秒后跳转到团队配置...</p>
+    <a href="/wizard" class="button button-primary">立即配置团队</a>
+    {% endif %}
+    <ul>
+    {% for ev in events %}
+        <li class="{{ ev.type }}">
+            {{ ev.path }}
+            {% if ev.type == 'file_succeeded' %} — {{ ev.op }}
+            {% elif ev.type == 'file_failed' %} — {{ ev.error }}
+            {% endif %}
+        </li>
+    {% endfor %}
+    </ul>
+{% endif %}
+<a href="/scaffold">返回首页</a>

@@ -1,0 +1,10 @@
+{% if success %}
+    <h2>团队组建完成</h2>
+    <p>配置已保存到 <code>.maestro/team.yaml</code>。</p>
+    <p><a href="/team">查看团队</a> · <a href="/wizard">重新组建</a></p>
+    <a href="/" class="button">完成</a>
+{% else %}
+    <h2>保存失败</h2>
+    <p>{{ error_msg }}</p>
+    <a href="/" class="button">返回主页</a>
+{% endif %}
