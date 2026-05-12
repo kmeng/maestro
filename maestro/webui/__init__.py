@@ -36,6 +36,13 @@ app.include_router(scaffold_router)
 app.include_router(scaffold_view_router)
 app.include_router(dispatch_log_router)
 
+# T3.7 / T3.8 / T3.9 observability views — imported after `templates` is bound
+# below so their module-level `from maestro.webui import templates` resolves
+# late (inside view functions) to avoid templates/ subdir name collision.
+from maestro.webui.history_view import router as history_router  # noqa: E402
+
+app.include_router(history_router)
+
 _STATIC_DIR = Path(__file__).parent / "static"
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
