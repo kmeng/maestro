@@ -9,14 +9,15 @@ Per design 56 § 4 + § 5. Methodology page (docs/savings-methodology.md)
 documents the formulas and gaps; this renderer links to it via relative
 path even though the methodology page itself lands in T6.4.
 
-Since T7.1 (Epic 7) the calc layer lives in bootstrap/savings.py and
-is shared with the Web UI route GET /savings.
+Since T7.1 (Epic 7) the calc layer lives in maestro/savings.py and
+is shared with the Web UI route GET /savings (relocated from
+bootstrap/savings.py in fix #86).
 """
 
 import sys
 from pathlib import Path
 
-# Project root on sys.path so `from bootstrap.savings import ...` works
+# Project root on sys.path so `from maestro.savings import ...` works
 # when invoked directly as `python scripts/render_savings.py`. Pytest
 # already injects the root via rootdir discovery, so this is a no-op
 # under test.
@@ -24,7 +25,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from bootstrap.savings import (
+from maestro.savings import (
     PROVIDER_RATES_USD_PER_M_TOKENS,
     compute_costs,
     filter_superseded,
