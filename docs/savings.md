@@ -1,14 +1,20 @@
 # Dispatch Savings
 
-Across 46 closed task(s), 116 dispatch(es) captured 877,779 total tokens. At provider rates, this cost $0.53; estimated baseline at Opus rates would be $41.35 — a conservative lower-bound saving of $40.82 (98.7%). All numbers in the table below come from worker-API responses captured at dispatch time; see methodology for what is measured vs estimated.
+Across 52 closed task(s), 127 dispatch(es) captured 982,462 total tokens. At provider rates, this cost $0.59; estimated baseline at Opus rates would be $45.73 — a conservative lower-bound saving of $45.13 (98.7%). All numbers in the table below come from worker-API responses captured at dispatch time; see methodology for what is measured vs estimated.
 
 ## Per-Task Savings
 
 | Task | Closed | Issue | Dispatches | Tokens | Wall (s) | Est. Opus $ | Worker $ | Saved | Status |
 |------|--------|-------|------------|--------|----------|-------------|----------|-------|--------|
+| fix-86 |  | [#86](https://github.com/kmeng/maestro/issues/86) | 2 (c1 l0 r1 s0) | 16,503 | 245 | $0.70 | $0.01 | $0.69 (98.5%) | ✓ |
 | T3.5c |  | [#77](https://github.com/kmeng/maestro/issues/77) | 4 (c1 l1 r1 s1) | 50,585 | 535 | $1.95 | $0.02 | $1.93 (98.9%) | ✓ |
 | T3.5b |  | [#76](https://github.com/kmeng/maestro/issues/76) | 4 (c1 l1 r1 s1) | 27,351 | 281 | $1.03 | $0.01 | $1.02 (98.8%) | ✓ |
 | T3.5a |  | [#75](https://github.com/kmeng/maestro/issues/75) | 4 (c1 l0 r2 s1) | 20,569 | 334 | $0.97 | $0.01 | $0.96 (98.7%) | ✓ |
+| T7.5 |  | [#70](https://github.com/kmeng/maestro/issues/70) | 2 (c1 l0 r1 s0) | 16,636 | 327 | $0.84 | $0.01 | $0.83 (98.5%) | ✓ |
+| T7.4 |  | [#69](https://github.com/kmeng/maestro/issues/69) | 1 (c0 l0 r1 s0) | 7,476 | 70 | $0.24 | $0.00 | $0.24 (98.4%) | ✓ |
+| T7.3 |  | [#68](https://github.com/kmeng/maestro/issues/68) | 1 (c0 l0 r1 s0) | 8,560 | 107 | $0.31 | $0.00 | $0.30 (98.4%) | ✓ |
+| T7.2 |  | [#67](https://github.com/kmeng/maestro/issues/67) | 1 (c0 l0 r1 s0) | 7,633 | 119 | $0.31 | $0.00 | $0.30 (98.5%) | ✓ |
+| T7.1 |  | [#66](https://github.com/kmeng/maestro/issues/66) | 4 (c1 l2 r1 s0) | 47,875 | 546 | $1.98 | $0.02 | $1.95 (98.8%) | ✓ |
 | T6.8 |  | [#64](https://github.com/kmeng/maestro/issues/64) | 1 (c1 l0 r0 s0) | 10,530 | 193 | $0.52 | $0.01 | $0.51 (98.5%) | ✓ |
 | T6.7 |  | [#63](https://github.com/kmeng/maestro/issues/63) | 1 (c0 l1 r0 s0) | 2,803 | 15 | $0.10 | $0.00 | $0.10 (99.6%) | ✓ |
 | T6.5 |  | [#62](https://github.com/kmeng/maestro/issues/62) | 3 (c0 l3 r0 s0) | 24,029 | 114 | $0.77 | $0.00 | $0.77 (99.6%) | ✓ |
@@ -57,9 +63,9 @@ Across 46 closed task(s), 116 dispatch(es) captured 877,779 total tokens. At pro
 
 | Role | Dispatches | Total tokens | Avg tokens/call | Avg wall (s) | Total worker $ | Total est. Opus $ |
 |------|------------|---------------|-----------------|--------------|----------------|-------------------|
-| Coder | 40 | 390,602 | 9765 | 206.6 | $0.30 | $20.17 |
-| Librarian | 18 | 161,305 | 8961 | 38.5 | $0.02 | $5.53 |
-| Reviewer | 36 | 235,049 | 6529 | 125.7 | $0.18 | $11.60 |
+| Coder | 43 | 428,597 | 9967 | 208.6 | $0.33 | $22.08 |
+| Librarian | 20 | 176,229 | 8811 | 37.9 | $0.02 | $6.10 |
+| Reviewer | 42 | 286,813 | 6829 | 123.1 | $0.20 | $13.50 |
 | Scribe | 8 | 19,823 | 2478 | 16.1 | $0.00 | $0.86 |
 
 *14 row(s) excluded from this aggregate as ⚠ estimates.*
@@ -67,5 +73,5 @@ Across 46 closed task(s), 116 dispatch(es) captured 877,779 total tokens. At pro
 ---
 
 *Methodology: [docs/savings-methodology.md](savings-methodology.md)*  
-*Last updated: 2026-05-12T03:34:55Z*  
+*Last updated: 2026-05-12T14:58:42Z*  
 *Source: [dispatch-log.jsonl](data/dispatch-log.jsonl)*
