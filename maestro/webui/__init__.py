@@ -41,11 +41,13 @@ app.include_router(dispatch_log_router)
 # late (inside view functions) to avoid templates/ subdir name collision.
 from maestro.webui.history_view import router as history_router  # noqa: E402
 from maestro.webui.live_view import router as live_router  # noqa: E402
+from maestro.webui.overview_api import router as overview_router  # noqa: E402
 from maestro.webui.problem_panel import router as problem_panel_router  # noqa: E402
 from maestro.webui.savings_view import router as savings_router  # noqa: E402
 
 app.include_router(history_router)
 app.include_router(live_router)
+app.include_router(overview_router)
 app.include_router(problem_panel_router)
 app.include_router(savings_router)
 
