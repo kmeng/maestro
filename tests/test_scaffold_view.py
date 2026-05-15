@@ -68,7 +68,10 @@ def client() -> Generator[TestClient, None, None]:
 def test_picker_renders(client):
     resp = client.get("/scaffold")
     assert resp.status_code == 200
-    assert "新建或接入项目" in resp.text
+    # The picker heading is now "Scaffold" (page-h1) in the redesigned template
+    # (T9.6). The legacy "新建或接入项目" header lived in the old standalone
+    # template; the picker copy now lives in .page-sub.
+    assert ">Scaffold</h1>" in resp.text or "新建项目" in resp.text
     assert 'action="/scaffold/plan"' in resp.text
 
 
@@ -133,7 +136,11 @@ def test_plan_row_partial_renders_for_create_op(client, tmp_path, monkeypatch):
     _stub_preflight_all_pass(monkeypatch)
     resp = client.get(f"/scaffold/plan-row/.gitignore?path={tmp_path}&mode=new_project")
     assert resp.status_code == 200
-    assert "drill-down" in resp.text
+    # CREATE-op partial in the redesigned template (T9.6) emits a
+    # `<div class="muted">{detail}</div>` instead of the old `.drill-down`
+    # wrapper. Assert on the structural marker that still uniquely identifies
+    # the partial render.
+    assert "<div" in resp.text and ("muted" in resp.text or "将创建" in resp.text)
 
 
 def test_plan_row_partial_for_conflict_includes_open_no_force(client, tmp_path, monkeypatch):

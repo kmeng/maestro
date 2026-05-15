@@ -1,21 +1,19 @@
 {% if row.op == 'APPEND_DELIMITED' %}
-<div class="drill-down">
-    <h4>将追加以下内容到 {{ row.path }}</h4>
-    <pre class="diff-added">{{ wrapped_section }}</pre>
-    {% if existing_content %}
-    <h4>当前文件内容（保留不变）</h4>
-    <pre class="diff-existing">{{ existing_content }}</pre>
-    {% endif %}
+<div class="panel" style="margin: 8px 12px; background: var(--panel-tint);">
+  <h4 style="font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;">将追加以下内容到 <span class="mono">{{ row.path }}</span></h4>
+  <pre class="mono" style="white-space: pre-wrap; background: var(--panel); padding: 10px; border-radius: var(--radius-sm); font-size: 12px; border: 1px solid var(--border);">{{ wrapped_section }}</pre>
+  {% if existing_content %}
+  <h4 style="font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 12px 0 8px;">当前文件内容（保留不变）</h4>
+  <pre class="mono muted" style="white-space: pre-wrap; background: var(--panel); padding: 10px; border-radius: var(--radius-sm); font-size: 12px; border: 1px solid var(--border);">{{ existing_content }}</pre>
+  {% endif %}
 </div>
 {% elif row.op == 'CONFLICT' %}
-<div class="drill-down conflict">
-    <h4>冲突原因</h4>
-    <p>{{ conflict_reason_chinese }}</p>
-    <a href="vscode://file/{{ path }}/{{ row.path }}" class="button">打开文件</a>
-    <p class="hint">编辑文件后请重新生成计划查看变化（暂无"跳过此文件"按钮——v0.0.3 的策略是用户编辑文件直至冲突消失，详见 design 14 D3）。</p>
+<div class="panel" style="margin: 8px 12px; background: #fee2e2; border-color: var(--red);">
+  <h4 style="font-size: 12px; font-weight: 600; color: var(--red); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;">冲突原因</h4>
+  <p style="font-size: 13px;">{{ conflict_reason_chinese }}</p>
+  <p style="margin-top: 10px;"><a class="btn" href="vscode://file/{{ path }}/{{ row.path }}">打开文件</a></p>
+  <p class="muted" style="font-size: 12px; margin-top: 8px;">编辑文件后请重新生成计划查看变化。</p>
 </div>
 {% else %}
-<div class="drill-down">
-    <p>{{ row.detail }}</p>
-</div>
+<div class="muted" style="padding: 8px 12px; font-size: 13px;">{{ row.detail }}</div>
 {% endif %}

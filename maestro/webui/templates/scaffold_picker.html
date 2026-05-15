@@ -1,12 +1,25 @@
-<h2>新建或接入项目</h2>
-<form action="/scaffold/plan" method="get">
-    <label>项目路径
-        <input name="path" required placeholder="/absolute/path/to/project">
-    </label>
-    <fieldset>
-        <legend>模式</legend>
-        <label><input type="radio" name="mode" value="new_project" checked> 新建项目（空目录）</label>
-        <label><input type="radio" name="mode" value="take_over"> 接入现有项目（git 仓库）</label>
-    </fieldset>
-    <button type="submit">查看计划</button>
-</form>
+{% extends "_base.html" %}
+{% set nav_active = "scaffold" %}
+{% block title %}Scaffold{% endblock %}
+{% block content %}
+  <h1 class="page-h1">Scaffold</h1>
+  <div class="page-sub">新建项目或将 Maestro 接入现有 git 仓库。</div>
+  <section class="panel" style="max-width: 720px;">
+    <form action="/scaffold/plan" method="get">
+      <label class="field">
+        <span class="field-label">项目路径</span>
+        <input class="field-input" name="path" required placeholder="/absolute/path/to/project">
+      </label>
+      <fieldset style="border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 16px;">
+        <legend style="padding: 0 6px; font-size: 12px; font-weight: 600; color: var(--muted);">模式</legend>
+        <label style="display: block; padding: 6px 0; cursor: pointer;">
+          <input type="radio" name="mode" value="new_project" checked> 新建项目（空目录）
+        </label>
+        <label style="display: block; padding: 6px 0; cursor: pointer;">
+          <input type="radio" name="mode" value="take_over"> 接入现有项目（git 仓库）
+        </label>
+      </fieldset>
+      <button type="submit" class="btn btn-primary">查看计划 →</button>
+    </form>
+  </section>
+{% endblock %}
