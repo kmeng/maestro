@@ -131,9 +131,10 @@ def test_step3_renders_step2_with_errors_on_validation_failure(client):
     response = client.post("/wizard/step3", data=data)
     assert response.status_code == 200
     # Should re-render step2 (the form) — fieldset legends present.
-    assert "<fieldset>" in response.text
-    # Top-level error banner present.
-    assert "error-banner" in response.text
+    assert "<fieldset" in response.text
+    # Some field error rendered (per-field span uses .field-error class
+    # in the new design — replaces the legacy .error-banner element).
+    assert "field-error" in response.text
 
 
 def test_save_writes_team_yaml_and_renders_step4(client, tmp_path):
