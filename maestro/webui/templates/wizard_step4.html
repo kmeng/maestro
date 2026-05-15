@@ -1,10 +1,31 @@
-{% if success %}
-    <h2>团队组建完成</h2>
-    <p>配置已保存到 <code>.maestro/team.yaml</code>。</p>
-    <p><a href="/team">查看团队</a> · <a href="/wizard">重新组建</a></p>
-    <a href="/" class="button">完成</a>
-{% else %}
-    <h2>保存失败</h2>
-    <p>{{ error_msg }}</p>
-    <a href="/" class="button">返回主页</a>
-{% endif %}
+<div class="wizard-step" data-step="4">
+  <div class="wizard-progress" aria-label="Step 4 of 4">
+    <span class="wp-dot done"></span>
+    <span class="wp-line done"></span>
+    <span class="wp-dot done"></span>
+    <span class="wp-line done"></span>
+    <span class="wp-dot done"></span>
+    <span class="wp-line done"></span>
+    <span class="wp-dot active"></span>
+  </div>
+  {% if success %}
+  <div class="empty-state">
+    <div class="empty-icon" style="color: var(--green);">✓</div>
+    <div class="empty-title">团队组建完成</div>
+    <div class="empty-body">配置已保存到 <span class="mono">.maestro/team.yaml</span>。</div>
+    <p style="margin-top: 18px;">
+      <a href="/team-catalog" class="btn btn-primary">查看团队</a>
+      <a href="/" class="btn">返回 Overview</a>
+    </p>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon" style="color: var(--red);">✗</div>
+    <div class="empty-title">保存失败</div>
+    <div class="empty-body">{{ error_msg }}</div>
+    <p style="margin-top: 18px;">
+      <a href="/" class="btn">返回 Overview</a>
+    </p>
+  </div>
+  {% endif %}
+</div>
