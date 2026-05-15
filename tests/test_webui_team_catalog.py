@@ -69,7 +69,9 @@ def test_get_edit_returns_edit_partial(client, tmp_path):
     save_team_config(tmp_path, _valid_config())
     resp = client.get("/team/edit/coder")
     assert resp.status_code == 200
-    assert '<input name="member"' in resp.text
+    # Redesigned partial (T9.4) emits `<input class="field-input" name="member" ...>`.
+    # Match on the attribute substring, not the full opening tag.
+    assert 'name="member"' in resp.text
     assert 'value="Cody"' in resp.text
 
 
@@ -87,7 +89,7 @@ def test_post_edit_saves_and_returns_view_row(client, tmp_path):
     assert resp.status_code == 200
     content = resp.text
     assert "NewCody" in content
-    assert '<input name="member"' not in content
+    assert 'name="member"' not in content
     config = load_team_config(tmp_path)
     assert config.roles["coder"].member == "NewCody"
 
@@ -100,7 +102,7 @@ def test_post_edit_invalid_value_returns_edit_partial_with_errors(client, tmp_pa
     )
     assert resp.status_code == 200
     content = resp.text
-    assert '<input name="model"' in content
+    assert 'name="model"' in content
     assert "格式" in content or "横线" in content
 
 
@@ -109,4 +111,6 @@ def test_get_row_returns_view_partial_for_cancel(client, tmp_path):
     resp = client.get("/team/row/coder")
     assert resp.status_code == 200
     assert "Cody" in resp.text
-    assert "<input name=" not in resp.text
+    # View-mode partial must not include an editable input.
+    assert 'name="member"' not in resp.text
+    assert 'name="model"' not in resp.text
