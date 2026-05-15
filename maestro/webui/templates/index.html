@@ -1,84 +1,262 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Maestro · 本地 AI 软件团队</title>
-    <style>
-        :root {
-            --bg: #ffffff;
-            --fg: #111111;
-            --muted: #666666;
-        }
-        @media (prefers-color-scheme: dark) {
-            :root {
-                --bg: #1a1a1a;
-                --fg: #eeeeee;
-                --muted: #999999;
-            }
-        }
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: var(--bg);
-            color: var(--fg);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", sans-serif;
-            position: relative;
-        }
-        .hero {
-            text-align: center;
-            user-select: none;
-        }
-        .eyebrow {
-            font-size: 0.9em;
-            color: var(--muted);
-            margin-bottom: 0.5em;
-            letter-spacing: 0.05em;
-        }
-        h1 {
-            font-family: Georgia, "Noto Serif CJK SC", serif;
-            font-size: 3.5em;
-            font-weight: 400;
-            letter-spacing: 0.15em;
-            margin-bottom: 0.3em;
-        }
-        .hero-copy {
-            font-size: 2em;
-            font-weight: 300;
-            margin-bottom: 0.6em;
-        }
-        .sub-copy {
-            font-size: 0.95em;
-            color: var(--muted);
-            line-height: 1.6;
-        }
-        footer {
-            position: absolute;
-            bottom: 1em;
-            right: 1.5em;
-            font-size: 0.8em;
-            color: var(--muted);
-        }
-    </style>
-</head>
-<body>
-    <div class="hero">
-        <div class="eyebrow">本地 AI 软件团队</div>
-        <h1>Maestro</h1>
-        <div class="hero-copy">等待第一支乐章</div>
-        <div class="sub-copy">
-            团队组建 · 项目脚手架 · 执行观测<br>
-            将随 Epic 1–3 依次上演
-        </div>
+{% extends "_base.html" %}
+{% set nav_active = "overview" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+  <h1 class="page-h1">Overview</h1>
+  <div class="page-sub" id="overview-subtitle">Loading…</div>
+
+  <div class="kpis">
+    <div class="kpi">
+      <div class="kpi-label">Dispatches today</div>
+      <div class="kpi-value" id="kpi-today-dispatches">—</div>
+      <div class="kpi-delta" id="kpi-today-delta"></div>
     </div>
-    <footer>v{{ version }}</footer>
-    <script src="/static/vendor/htmx.min.js" defer></script>
-</body>
-</html>
+    <div class="kpi">
+      <div class="kpi-label">Cumulative savings</div>
+      <div class="kpi-value"><span id="kpi-cumulative-savings">—</span><span class="kpi-unit">USD</span></div>
+      <div class="kpi-delta" id="kpi-cumulative-pct"></div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Active workers</div>
+      <div class="kpi-value" id="kpi-active-workers">—</div>
+      <div class="kpi-delta neutral" id="kpi-active-detail"></div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Open problems</div>
+      <div class="kpi-value" id="kpi-open-problems">—</div>
+      <div class="kpi-delta neutral" id="kpi-problems-detail"></div>
+    </div>
+  </div>
+
+  <div class="row2">
+    <section class="panel">
+      <header class="panel-h">
+        <h2 class="panel-title">Dispatches · last 7 days</h2>
+        <div class="panel-meta" id="sparkline-total"></div>
+      </header>
+      <svg id="sparkline" viewBox="0 0 700 110" preserveAspectRatio="none" style="width:100%; height:110px; display:block;"></svg>
+    </section>
+    <section class="panel">
+      <header class="panel-h">
+        <h2 class="panel-title">Now running</h2>
+        <div class="panel-meta" id="now-running-meta"></div>
+      </header>
+      <div id="now-running-body"></div>
+    </section>
+  </div>
+
+  <div class="entries">
+    <a href="/team-catalog" class="entry">
+      <div class="entry-title">Team</div>
+      <div class="entry-desc">Pick the model behind each role — coder, reviewer, scribe, librarian.</div>
+      <div class="entry-cta" id="entry-team-cta">→</div>
+    </a>
+    <a href="/scaffold" class="entry">
+      <div class="entry-title">Scaffold</div>
+      <div class="entry-desc">Spin up a fresh project from a vetted template.</div>
+      <div class="entry-cta">→</div>
+    </a>
+    <a href="/live" class="entry">
+      <div class="entry-title">Live</div>
+      <div class="entry-desc">Watch a dispatch as it happens — stream tokens, cost, status.</div>
+      <div class="entry-cta" id="entry-live-cta">→</div>
+    </a>
+    <a href="/history" class="entry">
+      <div class="entry-title">History</div>
+      <div class="entry-desc">Browse past dispatches with cost, duration and verdict.</div>
+      <div class="entry-cta" id="entry-history-cta">→</div>
+    </a>
+    <a href="/savings" class="entry">
+      <div class="entry-title">Savings</div>
+      <div class="entry-desc">How much you saved vs running everything on a flagship model.</div>
+      <div class="entry-cta" id="entry-savings-cta">→</div>
+    </a>
+    <a href="/problems" class="entry">
+      <div class="entry-title">Problems</div>
+      <div class="entry-desc">Worker-quality flags, spec drift, dogfooding blockers.</div>
+      <div class="entry-cta" id="entry-problems-cta">→</div>
+    </a>
+  </div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+(async () => {
+  const subtitleEl = document.getElementById('overview-subtitle');
+  const kpiToday = document.getElementById('kpi-today-dispatches');
+  const kpiTodayDelta = document.getElementById('kpi-today-delta');
+  const kpiCumSavings = document.getElementById('kpi-cumulative-savings');
+  const kpiCumPct = document.getElementById('kpi-cumulative-pct');
+  const kpiActiveWorkers = document.getElementById('kpi-active-workers');
+  const kpiActiveDetail = document.getElementById('kpi-active-detail');
+  const kpiOpenProblems = document.getElementById('kpi-open-problems');
+  const kpiProblemsDetail = document.getElementById('kpi-problems-detail');
+  const sparklineSvg = document.getElementById('sparkline');
+  const sparklineTotal = document.getElementById('sparkline-total');
+  const nowRunningMeta = document.getElementById('now-running-meta');
+  const nowRunningBody = document.getElementById('now-running-body');
+  const entryTeamCTA = document.getElementById('entry-team-cta');
+  const entryLiveCTA = document.getElementById('entry-live-cta');
+  const entryHistoryCTA = document.getElementById('entry-history-cta');
+  const entrySavingsCTA = document.getElementById('entry-savings-cta');
+  const entryProblemsCTA = document.getElementById('entry-problems-cta');
+
+  let data;
+  try {
+    const resp = await fetch('/api/overview');
+    if (!resp.ok) {
+      subtitleEl.textContent = 'Failed to load — check server logs';
+      return;
+    }
+    data = await resp.json();
+  } catch (err) {
+    subtitleEl.textContent = 'Failed to load — check server logs';
+    return;
+  }
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  let subtitleText = dateStr;
+  if (data.telemetry === 'disabled') {
+    subtitleText += ' · telemetry disabled';
+  }
+  if (data.cumulative.dispatches === 0) {
+    subtitleText = 'First run · ' + subtitleText;
+  }
+  subtitleEl.textContent = subtitleText;
+
+  kpiToday.textContent = data.today.dispatches;
+
+  const delta = data.today.delta_dispatches_vs_yesterday;
+  if (delta > 0) {
+    kpiTodayDelta.textContent = `↑ ${delta} vs yesterday`;
+    kpiTodayDelta.className = 'kpi-delta up';
+  } else if (delta < 0) {
+    kpiTodayDelta.textContent = `↓ ${Math.abs(delta)} vs yesterday`;
+    kpiTodayDelta.className = 'kpi-delta down';
+  } else {
+    kpiTodayDelta.textContent = 'no change yesterday';
+    kpiTodayDelta.className = 'kpi-delta neutral';
+  }
+
+  kpiCumSavings.textContent = data.cumulative.savings_usd.toFixed(2);
+  const pct = data.cumulative.savings_pct;
+  kpiCumPct.textContent = `${pct}% off flagship`;
+  kpiCumPct.className = `kpi-delta ${pct > 0 ? 'up' : 'neutral'}`;
+
+  kpiActiveWorkers.textContent = data.active_workers;
+  kpiActiveDetail.textContent = data.active_workers > 0 ? 'running' : 'idle';
+
+  const problems = data.open_problems;
+  kpiOpenProblems.textContent = problems;
+  if (problems > 0) {
+    kpiOpenProblems.style.setProperty('color', 'var(--orange)');
+  }
+  kpiProblemsDetail.textContent = problems > 0 ? 'see /problems' : 'all clear';
+
+  const sparkData = data.sparkline_7d;
+  const counts = sparkData.map(d => d.count);
+  const maxCount = Math.max(1, ...counts);
+  const w = 700, h = 110, pad = 10;
+  const xScale = i => (i / 6) * w;
+  const yScale = c => h - pad - ((c / maxCount) * (h - 2 * pad));
+  const points = counts.map((c, i) => `${xScale(i)},${yScale(c)}`);
+  const linePath = 'M' + points.join(' L');
+  const areaPath = linePath + ` L${xScale(6)},${h - pad} L0,${h - pad} Z`;
+
+  sparklineSvg.innerHTML = '';
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const defs = document.createElementNS(SVGNS, 'defs');
+  const grad = document.createElementNS(SVGNS, 'linearGradient');
+  grad.setAttribute('id', 'sparkGrad');
+  grad.setAttribute('x1', '0'); grad.setAttribute('y1', '0');
+  grad.setAttribute('x2', '0'); grad.setAttribute('y2', '1');
+  const stop1 = document.createElementNS(SVGNS, 'stop');
+  stop1.setAttribute('offset', '0%');
+  stop1.setAttribute('stop-color', 'var(--accent)');
+  stop1.setAttribute('stop-opacity', '0.18');
+  const stop2 = document.createElementNS(SVGNS, 'stop');
+  stop2.setAttribute('offset', '100%');
+  stop2.setAttribute('stop-color', 'var(--accent)');
+  stop2.setAttribute('stop-opacity', '0');
+  grad.appendChild(stop1); grad.appendChild(stop2);
+  defs.appendChild(grad);
+  sparklineSvg.appendChild(defs);
+
+  const area = document.createElementNS(SVGNS, 'path');
+  area.setAttribute('d', areaPath);
+  area.setAttribute('fill', 'url(#sparkGrad)');
+  sparklineSvg.appendChild(area);
+
+  const line = document.createElementNS(SVGNS, 'path');
+  line.setAttribute('d', linePath);
+  line.setAttribute('fill', 'none');
+  line.setAttribute('stroke', 'var(--accent)');
+  line.setAttribute('stroke-width', '1.8');
+  sparklineSvg.appendChild(line);
+
+  const lastCount = counts[6];
+  const cx = xScale(6), cy = yScale(lastCount);
+  const circle = document.createElementNS(SVGNS, 'circle');
+  circle.setAttribute('cx', cx);
+  circle.setAttribute('cy', cy);
+  circle.setAttribute('r', '4');
+  circle.setAttribute('fill', 'var(--accent)');
+  sparklineSvg.appendChild(circle);
+
+  sparklineTotal.textContent = `${data.cumulative.dispatches} total`;
+
+  if (data.cumulative.dispatches === 0) {
+    nowRunningBody.innerHTML = '<a href="/wizard" class="btn btn-primary">Get started → Set up your team</a>';
+    nowRunningMeta.textContent = '';
+  } else if (data.now_running === null) {
+    nowRunningBody.innerHTML = '<div class="empty-run">No dispatch running.</div>';
+    nowRunningMeta.textContent = 'idle';
+  } else {
+    const run = data.now_running;
+    const elapsed = run.elapsed_s;
+    let elapsedStr;
+    if (elapsed >= 60) {
+      const mins = Math.floor(elapsed / 60);
+      const secs = elapsed % 60;
+      elapsedStr = `${mins}m ${secs}s`;
+    } else {
+      elapsedStr = `${elapsed}s`;
+    }
+    nowRunningMeta.textContent = elapsedStr;
+
+    nowRunningBody.innerHTML = '';
+    const container = document.createElement('div');
+    container.className = 'run';
+
+    const pulse = document.createElement('div');
+    pulse.className = 'pulse';
+    container.appendChild(pulse);
+
+    const info = document.createElement('div');
+    info.className = 'run-info';
+
+    const main = document.createElement('div');
+    main.className = 'run-main';
+    main.textContent = `${run.role} · ${run.input_summary}`;
+    info.appendChild(main);
+
+    const sub = document.createElement('div');
+    sub.className = 'run-sub';
+    sub.textContent = `${run.model} · ${run.member}`;
+    info.appendChild(sub);
+
+    container.appendChild(info);
+    nowRunningBody.appendChild(container);
+  }
+
+  if (entryTeamCTA) entryTeamCTA.textContent = 'Configure →';
+  if (entryLiveCTA) entryLiveCTA.textContent = data.active_workers > 0 ? `${data.active_workers} in flight →` : 'Watch →';
+  if (entryHistoryCTA) entryHistoryCTA.textContent = `${data.cumulative.dispatches} records →`;
+  if (entrySavingsCTA) entrySavingsCTA.textContent = `$${data.cumulative.savings_usd.toFixed(2)} saved →`;
+  if (entryProblemsCTA) {
+    entryProblemsCTA.textContent = `${data.open_problems} open →`;
+    entryProblemsCTA.style.color = data.open_problems > 0 ? 'var(--orange)' : 'var(--accent)';
+  }
+})();
+</script>
+{% endblock %}
