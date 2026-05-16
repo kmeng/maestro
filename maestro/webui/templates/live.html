@@ -1,33 +1,52 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <title>Maestro · 实时调度</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; max-width: 1200px; margin: 2em auto; padding: 0 1em; }
-    h1, h2 { color: #222; }
-    .zones { display: grid; grid-template-columns: 1fr 1fr; gap: 2em; }
-    .zone { min-height: 300px; }
-    .zone h2 { font-size: 1.1em; border-bottom: 2px solid #eee; padding-bottom: 0.3em; }
-    .card { border: 1px solid #e1e4e8; border-radius: 6px; padding: 0.8em 1em; margin-bottom: 0.6em; background: #fff; }
-    .card .role { font-weight: 600; }
-    .card .model { color: #666; font-size: 0.9em; }
-    .card .elapsed { float: right; color: #888; font-variant-numeric: tabular-nums; }
-    .card .summary { color: #444; margin-top: 0.3em; font-size: 0.95em; }
-    .card.success { border-left: 3px solid #2a8f3c; }
-    .card.failed { border-left: 3px solid #c0392b; }
-    .card.refused { border-left: 3px solid #888; }
-    .badge-fallback { background: #fff3cd; color: #856404; padding: 0.1em 0.5em; border-radius: 3px; font-size: 0.8em; margin-left: 0.5em; }
-    .empty { color: #aaa; font-style: italic; padding: 1em; }
-    .status-banner { padding: 0.5em 1em; margin-bottom: 1em; border-radius: 4px; font-size: 0.9em; }
-    .status-banner.connecting { background: #fff3cd; color: #856404; }
-    .status-banner.connected { background: #d4edda; color: #155724; }
-    .status-banner.error { background: #f8d7da; color: #721c24; }
-    .status-banner.rotated { background: #cce5ff; color: #004085; }
-  </style>
-</head>
-<body>
-  <h1>实时调度</h1>
+{% extends "_base.html" %}
+{% set nav_active = "live" %}
+{% block title %}Live{% endblock %}
+
+{% block extra_head %}
+<!-- Page-specific live-view styling for legacy class names that the inline JS depends on -->
+<style>
+.zones { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.zone h2 {
+  font-size: 13px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 12px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.card {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px 16px; margin-bottom: 10px;
+  background: var(--panel);
+}
+.card .role { font-weight: 600; font-size: 13.5px; }
+.card .model { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.card .elapsed { float: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.card .summary { color: var(--fg); margin-top: 8px; font-size: 13px; line-height: 1.5; }
+.card.success { border-left: 3px solid var(--green); }
+.card.failed { border-left: 3px solid var(--red); }
+.card.refused { border-left: 3px solid var(--muted); }
+.badge-fallback {
+  display: inline-block; background: #fef3c7; color: var(--orange);
+  padding: 1px 6px; border-radius: var(--radius-sm);
+  font-size: 11px; margin-left: 6px;
+}
+.empty { color: var(--muted); font-style: italic; padding: 16px 8px; font-size: 13px; }
+.status-banner {
+  padding: 6px 12px; margin-bottom: 16px;
+  border-radius: var(--radius-sm);
+  font-size: 12px; font-weight: 500;
+  display: inline-block;
+}
+.status-banner.connecting { background: #fef3c7; color: var(--orange); }
+.status-banner.connected { background: #dcfce7; color: var(--green); }
+.status-banner.error { background: #fee2e2; color: var(--red); }
+.status-banner.rotated { background: var(--accent-tint); color: var(--accent); }
+</style>
+{% endblock %}
+
+{% block content %}
+  <h1 class="page-h1">Live</h1>
+  <div class="page-sub">实时订阅 dispatch event 流（SSE）。</div>
   <div id="status" class="status-banner connecting">连接中…</div>
   <div class="zones">
     <div class="zone">
@@ -39,199 +58,192 @@
       <div id="completed"><div class="empty">暂无已完成的调度</div></div>
     </div>
   </div>
+{% endblock %}
 
-  <script>
-  (function() {
-    const MAX_COMPLETED = 10;
-    const running = document.getElementById('running');
-    const completed = document.getElementById('completed');
-    const status = document.getElementById('status');
+{% block extra_scripts %}
+<script>
+(function() {
+  const MAX_COMPLETED = 10;
+  const running = document.getElementById('running');
+  const completed = document.getElementById('completed');
+  const status = document.getElementById('status');
 
-    function setStatus(text, cls) {
-      status.textContent = text;
-      status.className = 'status-banner ' + cls;
+  function setStatus(text, cls) {
+    status.textContent = text;
+    status.className = 'status-banner ' + cls;
+  }
+
+  function clearEmptyState(container) {
+    const empty = container.querySelector('.empty');
+    if (empty) empty.remove();
+  }
+
+  function showEmptyIfBare(container, text) {
+    if (container.children.length === 0) {
+      const d = document.createElement('div');
+      d.className = 'empty';
+      d.textContent = text;
+      container.appendChild(d);
     }
+  }
 
-    function clearEmptyState(container) {
-      const empty = container.querySelector('.empty');
-      if (empty) empty.remove();
+  function formatElapsed(ms) {
+    if (ms < 1000) return ms + ' 毫秒';
+    return (ms / 1000).toFixed(1) + ' 秒';
+  }
+
+  const runningCards = new Map();
+
+  function tickElapsed() {
+    const now = Date.now();
+    for (const [rid, { card, startTs }] of runningCards) {
+      const el = card.querySelector('.elapsed');
+      if (el) el.textContent = formatElapsed(now - startTs);
     }
+  }
+  setInterval(tickElapsed, 1000);
 
-    function showEmptyIfBare(container, text) {
-      if (container.children.length === 0) {
-        const d = document.createElement('div');
-        d.className = 'empty';
-        d.textContent = text;
-        container.appendChild(d);
-      }
+  function makeCard(rid) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.requestId = rid;
+    card.innerHTML = `
+      <span class="elapsed">0 毫秒</span>
+      <div class="role"></div>
+      <div class="model"></div>
+      <div class="summary"></div>
+    `;
+    return card;
+  }
+
+  function handleStart(ev) {
+    let entry = runningCards.get(ev.request_id);
+    let card;
+    if (entry) {
+      card = entry.card;
+    } else {
+      card = makeCard(ev.request_id);
+      clearEmptyState(running);
+      running.prepend(card);
     }
+    card.querySelector('.role').textContent = ev.role + (ev.member ? ' / ' + ev.member : '');
+    card.querySelector('.model').textContent = ev.model;
+    card.querySelector('.summary').textContent = ev.input_summary || '';
+    const startTs = Date.parse(ev.timestamp);
+    runningCards.set(ev.request_id, { card, startTs });
+  }
 
-    function formatElapsed(ms) {
-      if (ms < 1000) return ms + ' 毫秒';
-      return (ms / 1000).toFixed(1) + ' 秒';
+  function moveToCompleted(rid, statusClass, statusText, extraText) {
+    const entry = runningCards.get(rid);
+    let card;
+    if (entry) {
+      card = entry.card;
+      card.remove();
+      runningCards.delete(rid);
+    } else {
+      card = makeCard(rid);
     }
-
-    const runningCards = new Map();
-
-    function tickElapsed() {
-      const now = Date.now();
-      for (const [rid, { card, startTs }] of runningCards) {
-        const el = card.querySelector('.elapsed');
-        if (el) el.textContent = formatElapsed(now - startTs);
-      }
+    card.classList.add(statusClass);
+    const summaryEl = card.querySelector('.summary');
+    summaryEl.textContent = (extraText || '');
+    clearEmptyState(completed);
+    completed.prepend(card);
+    while (completed.children.length > MAX_COMPLETED) {
+      completed.removeChild(completed.lastChild);
     }
-    setInterval(tickElapsed, 1000);
+    showEmptyIfBare(running, '暂无进行中的调度');
+    return card;
+  }
 
-    function makeCard(rid) {
-      const card = document.createElement('div');
-      card.className = 'card';
-      card.dataset.requestId = rid;
-      card.innerHTML = `
-        <span class="elapsed">0 毫秒</span>
-        <div class="role"></div>
-        <div class="model"></div>
-        <div class="summary"></div>
-      `;
-      return card;
+  function handleEnd(ev) {
+    const card = moveToCompleted(ev.request_id, 'success', '成功', ev.output_summary || '');
+    const role = card.querySelector('.role');
+    if (role && !role.textContent.startsWith('✓ ')) role.textContent = '✓ ' + role.textContent;
+    const elapsed = card.querySelector('.elapsed');
+    if (elapsed) elapsed.textContent = formatElapsed(ev.duration_ms);
+  }
+
+  function handleFailed(ev) {
+    const card = moveToCompleted(ev.request_id, 'failed', '失败', ev.error_message || '');
+    const role = card.querySelector('.role');
+    if (role && !role.textContent.startsWith('✗ ')) role.textContent = '✗ ' + role.textContent;
+    const elapsed = card.querySelector('.elapsed');
+    if (elapsed) elapsed.textContent = formatElapsed(ev.duration_ms);
+  }
+
+  function handleRefused(ev) {
+    const card = makeCard(ev.request_id);
+    card.classList.add('refused');
+    card.querySelector('.role').textContent = '⊘ 已拒绝';
+    card.querySelector('.model').textContent = ev.validation_error_field || '';
+    card.querySelector('.summary').textContent = ev.validation_error_message || '';
+    const elapsed = card.querySelector('.elapsed');
+    if (elapsed) elapsed.textContent = '';
+    clearEmptyState(completed);
+    completed.prepend(card);
+    while (completed.children.length > MAX_COMPLETED) {
+      completed.removeChild(completed.lastChild);
     }
+  }
 
-    function handleStart(ev) {
-      let entry = runningCards.get(ev.request_id);
-      let card;
-      if (entry) {
-        card = entry.card;
-      } else {
-        card = makeCard(ev.request_id);
-        clearEmptyState(running);
-        running.prepend(card);
-      }
-      card.querySelector('.role').textContent = ev.role + (ev.member ? ' / ' + ev.member : '');
-      card.querySelector('.model').textContent = ev.model;
-      card.querySelector('.summary').textContent = ev.input_summary || '';
-      const startTs = Date.parse(ev.timestamp);
-      runningCards.set(ev.request_id, { card, startTs });
+  const pendingFallbacks = new Set();
+
+  function handleFallback(ev) {
+    const entry = runningCards.get(ev.request_id);
+    if (entry) {
+      annotateFallback(entry.card);
+    } else {
+      pendingFallbacks.add(ev.request_id);
     }
+  }
 
-    function moveToCompleted(rid, statusClass, statusText, extraText) {
-      const entry = runningCards.get(rid);
-      let card;
-      if (entry) {
-        card = entry.card;
-        card.remove();
-        runningCards.delete(rid);
-      } else {
-        card = makeCard(rid);
-      }
-      card.classList.add(statusClass);
-      const summaryEl = card.querySelector('.summary');
-      summaryEl.textContent = (extraText || '');
-      clearEmptyState(completed);
-      completed.prepend(card);
-      while (completed.children.length > MAX_COMPLETED) {
-        completed.removeChild(completed.lastChild);
-      }
-      showEmptyIfBare(running, '暂无进行中的调度');
-      return card;
+  function annotateFallback(card) {
+    if (card.querySelector('.badge-fallback')) return;
+    const badge = document.createElement('span');
+    badge.className = 'badge-fallback';
+    badge.textContent = '↩ 已降级';
+    card.querySelector('.role').appendChild(badge);
+  }
+
+  function handleDispatchEvent(ev) {
+    switch (ev.event_type) {
+      case 'dispatch.start':
+        handleStart(ev);
+        if (pendingFallbacks.has(ev.request_id)) {
+          annotateFallback(runningCards.get(ev.request_id).card);
+          pendingFallbacks.delete(ev.request_id);
+        }
+        break;
+      case 'dispatch.end': handleEnd(ev); break;
+      case 'dispatch.failed': handleFailed(ev); break;
+      case 'dispatch.refused.config_invalid': handleRefused(ev); break;
+      case 'dispatch.fallback.config_absent': handleFallback(ev); break;
     }
+  }
 
-    function handleEnd(ev) {
-      const card = moveToCompleted(ev.request_id, 'success', '成功', ev.output_summary || '');
-      const role = card.querySelector('.role');
-      if (role && !role.textContent.startsWith('✓ ')) role.textContent = '✓ ' + role.textContent;
-      const elapsed = card.querySelector('.elapsed');
-      if (elapsed) elapsed.textContent = formatElapsed(ev.duration_ms);
+  function clearRunning() {
+    runningCards.clear();
+    running.innerHTML = '';
+    showEmptyIfBare(running, '暂无进行中的调度');
+  }
+
+  const source = new EventSource('/api/dispatch_log/stream');
+  source.onopen = () => setStatus('已连接', 'connected');
+  source.onerror = () => setStatus('连接中断，正在重连…', 'error');
+  source.onmessage = (e) => {
+    if (!e.data) return;
+    try {
+      const ev = JSON.parse(e.data);
+      handleDispatchEvent(ev);
+    } catch (err) {
+      console.error('parse failed', err, e.data);
     }
-
-    function handleFailed(ev) {
-      const card = moveToCompleted(ev.request_id, 'failed', '失败', ev.error_message || '');
-      const role = card.querySelector('.role');
-      if (role && !role.textContent.startsWith('✗ ')) role.textContent = '✗ ' + role.textContent;
-      const elapsed = card.querySelector('.elapsed');
-      if (elapsed) elapsed.textContent = formatElapsed(ev.duration_ms);
-    }
-
-    function handleRefused(ev) {
-      const card = makeCard(ev.request_id);
-      card.classList.add('refused');
-      card.querySelector('.role').textContent = '⊘ 已拒绝';
-      card.querySelector('.model').textContent = ev.validation_error_field || '';
-      card.querySelector('.summary').textContent = ev.validation_error_message || '';
-      const elapsed = card.querySelector('.elapsed');
-      if (elapsed) elapsed.textContent = '';
-      clearEmptyState(completed);
-      completed.prepend(card);
-      while (completed.children.length > MAX_COMPLETED) {
-        completed.removeChild(completed.lastChild);
-      }
-    }
-
-    const pendingFallbacks = new Set();
-
-    function handleFallback(ev) {
-      const entry = runningCards.get(ev.request_id);
-      if (entry) {
-        annotateFallback(entry.card);
-      } else {
-        pendingFallbacks.add(ev.request_id);
-      }
-    }
-
-    function annotateFallback(card) {
-      if (card.querySelector('.badge-fallback')) return;
-      const badge = document.createElement('span');
-      badge.className = 'badge-fallback';
-      badge.textContent = '↩ 已降级';
-      card.querySelector('.role').appendChild(badge);
-    }
-
-    function handleDispatchEvent(ev) {
-      switch (ev.event_type) {
-        case 'dispatch.start':
-          handleStart(ev);
-          if (pendingFallbacks.has(ev.request_id)) {
-            annotateFallback(runningCards.get(ev.request_id).card);
-            pendingFallbacks.delete(ev.request_id);
-          }
-          break;
-        case 'dispatch.end':
-          handleEnd(ev);
-          break;
-        case 'dispatch.failed':
-          handleFailed(ev);
-          break;
-        case 'dispatch.refused.config_invalid':
-          handleRefused(ev);
-          break;
-        case 'dispatch.fallback.config_absent':
-          handleFallback(ev);
-          break;
-      }
-    }
-
-    function clearRunning() {
-      runningCards.clear();
-      running.innerHTML = '';
-      showEmptyIfBare(running, '暂无进行中的调度');
-    }
-
-    const source = new EventSource('/api/dispatch_log/stream');
-    source.onopen = () => setStatus('已连接', 'connected');
-    source.onerror = () => setStatus('连接中断，正在重连…', 'error');
-    source.onmessage = (e) => {
-      if (!e.data) return;
-      try {
-        const ev = JSON.parse(e.data);
-        handleDispatchEvent(ev);
-      } catch (err) {
-        console.error('parse failed', err, e.data);
-      }
-    };
-    source.addEventListener('rotated', () => {
-      setStatus('日志文件已轮转，已清空进行中', 'rotated');
-      clearRunning();
-      setTimeout(() => setStatus('已连接', 'connected'), 3000);
-    });
-  })();
-  </script>
-</body>
-</html>
+  };
+  source.addEventListener('rotated', () => {
+    setStatus('日志文件已轮转，已清空进行中', 'rotated');
+    clearRunning();
+    setTimeout(() => setStatus('已连接', 'connected'), 3000);
+  });
+})();
+</script>
+{% endblock %}
