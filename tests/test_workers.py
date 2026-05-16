@@ -44,11 +44,11 @@ def server():
 # ============================================================
 
 
-def test_tools_registry_contains_five_roles_plus_job_status(server):
-    """Five worker roles (T8.2 adds verifier) plus the job_status
+def test_tools_registry_contains_six_roles_plus_job_status(server):
+    """Six worker roles (T8.3 adds spec_writer) plus the job_status
     infrastructure tool (ADR-0009)."""
     assert set(server.TOOLS_REGISTRY.keys()) == {
-        "coder", "librarian", "reviewer", "scribe", "verifier", "job_status",
+        "coder", "librarian", "reviewer", "scribe", "verifier", "spec_writer", "job_status",
     }
 
 
@@ -1427,3 +1427,216 @@ def test_scribe_broken_team_yaml_refuses(server, monkeypatch, tmp_path):
     events = scan_log(tmp_path / ".maestro" / "logs" / "dispatch.jsonl")
     assert len(events) == 1
     assert events[0].event_type == "dispatch.refused.config_invalid"
+
+
+# ============================================================
+# Spec-writer — tool registration + input validation + happy path (T8.3)
+# ============================================================
+
+
+def test_spec_writer_tool_required_fields(server):
+    """T8.3: schema requires structured fields; no GitHub-issue concepts."""
+    schema = server.SPEC_WRITER_TOOL.inputSchema
+    assert set(schema["required"]) == {
+        "task_description", "acceptance_criteria", "upstream_contracts",
+        "output_files", "language",
+    }
+    props = schema["properties"]
+    assert "shared_constraints" in props
+    assert "risk_markers" in props
+    assert "task_id" in props
+    assert "issue_number" in props
+    assert "issue_title" not in props
+    assert "issue_body" not in props
+
+
+def test_spec_writer_tool_registered_with_underscore_name(server):
+    """MCP tool name uses underscore (spec_writer) per Tool.name conventions."""
+    assert server.SPEC_WRITER_TOOL.name == "spec_writer"
+    assert "spec_writer" in server.TOOLS_REGISTRY
+
+
+def test_spec_writer_rejects_missing_task_description(server):
+    result = asyncio.run(server._spec_writer_impl({
+        "acceptance_criteria": ["x"],
+        "upstream_contracts": "y",
+        "output_files": ["a.py"],
+        "language": "python",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "task_description" in err["message"]
+
+
+def test_spec_writer_rejects_empty_acceptance_criteria(server):
+    result = asyncio.run(server._spec_writer_impl({
+        "task_description": "do X",
+        "acceptance_criteria": [],
+        "upstream_contracts": "y",
+        "output_files": ["a.py"],
+        "language": "python",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "acceptance_criteria" in err["message"]
+
+
+def test_spec_writer_rejects_non_string_acceptance_criteria_entry(server):
+    result = asyncio.run(server._spec_writer_impl({
+        "task_description": "do X",
+        "acceptance_criteria": ["valid", 42],
+        "upstream_contracts": "y",
+        "output_files": ["a.py"],
+        "language": "python",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "acceptance_criteria" in err["message"]
+
+
+def test_spec_writer_rejects_missing_upstream_contracts(server):
+    result = asyncio.run(server._spec_writer_impl({
+        "task_description": "do X",
+        "acceptance_criteria": ["x"],
+        "output_files": ["a.py"],
+        "language": "python",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "upstream_contracts" in err["message"]
+
+
+def test_spec_writer_rejects_empty_output_files(server):
+    result = asyncio.run(server._spec_writer_impl({
+        "task_description": "do X",
+        "acceptance_criteria": ["x"],
+        "upstream_contracts": "y",
+        "output_files": [],
+        "language": "python",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "output_files" in err["message"]
+
+
+def test_spec_writer_rejects_missing_language(server):
+    result = asyncio.run(server._spec_writer_impl({
+        "task_description": "do X",
+        "acceptance_criteria": ["x"],
+        "upstream_contracts": "y",
+        "output_files": ["a.py"],
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "language" in err["message"]
+
+
+def test_spec_writer_happy_path_uses_flash(server, monkeypatch):
+    """spec-writer is template-driven assembly — flash is sufficient."""
+    valid_output = {
+        "spec": "# Task X\n\nGoal: ...\n\nFiles: a.py",
+        "verification_checklist": ["verify a.py path exists in repo"],
+        "concerns": [],
+    }
+    mock_create = AsyncMock(
+        return_value=_mock_deepseek_response(json.dumps(valid_output))
+    )
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    result = asyncio.run(server._spec_writer_impl({
+        "task_description": "Add function foo to module a",
+        "acceptance_criteria": ["foo() returns 42", "foo() has a docstring"],
+        "upstream_contracts": "Module a currently has bar().",
+        "output_files": ["maestro/a.py"],
+        "language": "python",
+    }))
+    assert len(result) == 1
+    parsed = json.loads(result[0].text)
+    assert "_banner" in parsed
+    assert "spec-writer" in parsed["_banner"]
+    assert parsed["spec"] == valid_output["spec"]
+    assert parsed["verification_checklist"] == valid_output["verification_checklist"]
+    assert mock_create.call_args.kwargs["model"] == server.MODEL_FLASH
+
+    user_msg = mock_create.call_args.kwargs["messages"][1]["content"]
+    assert "Language: python" in user_msg
+    assert "Add function foo" in user_msg
+    assert "foo() returns 42" in user_msg
+    assert "maestro/a.py" in user_msg
+    assert "Module a currently has bar()." in user_msg
+
+
+def test_spec_writer_with_optional_fields(server, monkeypatch):
+    """shared_constraints + risk_markers reach the prompt when provided."""
+    valid_output = {
+        "spec": "spec text",
+        "verification_checklist": ["verify foo"],
+        "concerns": [],
+    }
+    mock_create = AsyncMock(
+        return_value=_mock_deepseek_response(json.dumps(valid_output))
+    )
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    asyncio.run(server._spec_writer_impl({
+        "task_description": "X",
+        "acceptance_criteria": ["ac1"],
+        "upstream_contracts": "uc",
+        "output_files": ["a.py"],
+        "language": "python",
+        "shared_constraints": "no new deps allowed",
+        "risk_markers": ["conftest.py subprocess patch trap"],
+    }))
+
+    user_msg = mock_create.call_args.kwargs["messages"][1]["content"]
+    assert "no new deps allowed" in user_msg
+    assert "conftest.py subprocess patch trap" in user_msg
+
+
+def test_spec_writer_rejects_oversize_combined_input(server):
+    huge = "x" * 100_000
+    result = asyncio.run(server._spec_writer_impl({
+        "task_description": "X",
+        "acceptance_criteria": ["ac"],
+        "upstream_contracts": huge,
+        "output_files": ["a.py"],
+        "language": "python",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "document_too_large"
+
+
+def test_spec_writer_returns_error_when_output_missing_verification_checklist(server, monkeypatch):
+    bad_output = {"spec": "x", "concerns": []}
+    mock_create = AsyncMock(
+        return_value=_mock_deepseek_response(json.dumps(bad_output))
+    )
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+    result = asyncio.run(server._spec_writer_impl({
+        "task_description": "X", "acceptance_criteria": ["ac"],
+        "upstream_contracts": "uc", "output_files": ["a.py"], "language": "python",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "output_schema_invalid"
+    assert "verification_checklist" in err["message"]
+
+
+def test_validate_spec_writer_output_accepts_valid(server):
+    valid = {
+        "spec": "x",
+        "verification_checklist": ["check 1"],
+        "concerns": [],
+    }
+    assert server._validate_spec_writer_output(valid) is None
+
+
+def test_validate_spec_writer_output_rejects_empty_spec(server):
+    bad = {"spec": "", "verification_checklist": ["x"], "concerns": []}
+    err = server._validate_spec_writer_output(bad)
+    assert "spec is not a non-empty string" in err
+
+
+def test_validate_spec_writer_output_rejects_non_list_checklist(server):
+    bad = {"spec": "x", "verification_checklist": "not a list", "concerns": []}
+    err = server._validate_spec_writer_output(bad)
+    assert "verification_checklist is not a list" in err

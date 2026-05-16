@@ -13,8 +13,8 @@ ROLE_IDS: tuple[str, ...] = ("coder", "librarian", "reviewer", "scribe")
 
 # Shipped infrastructure tools — dispatched like roles, but not user-
 # configurable via team.yaml. No team member is assigned; the MCP server
-# uses DEFAULT_MODELS for these directly. T8.3 will add "spec-writer".
-SHIPPED_TOOL_IDS: tuple[str, ...] = ("verifier",)
+# uses DEFAULT_MODELS for these directly.
+SHIPPED_TOOL_IDS: tuple[str, ...] = ("verifier", "spec-writer")
 
 # DEFAULT_MODELS sourced from Epic 5's worker fleet design (docs/design/52-...).
 # For ROLE_IDS entries, the wizard pre-fills these and the MCP server uses
@@ -29,9 +29,10 @@ DEFAULT_MODELS: dict[str, str] = {
     "reviewer": "deepseek-v4-pro",
     "scribe": "deepseek-v4-flash",
     "verifier": "deepseek-v4-flash",
+    "spec-writer": "deepseek-v4-flash",
 }
 
-RoleId = Literal["coder", "librarian", "reviewer", "scribe", "verifier"]
+RoleId = Literal["coder", "librarian", "reviewer", "scribe", "verifier", "spec-writer"]
 
 
 class RoleEntry(BaseModel):
