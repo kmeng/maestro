@@ -1,6 +1,18 @@
 {% extends "_base.html" %}
 {% set nav_active = "history" %}
 {% block title %}History{% endblock %}
+
+{% block extra_head %}
+<!-- Page-specific drill-down styling for the per-row <details> block (not in shared CSS per design doc § 5.3) -->
+<style>
+.history-drill { margin: 8px 0 0; font-size: 12.5px; line-height: 1.6; }
+.history-drill summary { cursor: pointer; }
+.history-drill dt { font-weight: 600; margin-top: 6px; color: var(--muted); }
+.history-drill dt.is-error { color: var(--red); }
+.history-drill dd { margin: 2px 0 0 12px; white-space: pre-wrap; }
+</style>
+{% endblock %}
+
 {% block content %}
   <h1 class="page-h1">History</h1>
   <div class="page-sub">{% if rows %}{{ rows|length }} 次调度，最新在前{% else %}暂无调度记录{% endif %}</div>
@@ -36,32 +48,32 @@
           <td class="mono">{{ row.duration }}</td>
           <td class="mono">{{ row.cost }}</td>
           <td>
-            <details>
-              <summary style="cursor: pointer;">{{ row.summary }}{% if row.summary_truncated %}…{% endif %}</summary>
-              <dl style="margin: 8px 0 0; font-size: 12.5px; line-height: 1.6;">
+            <details class="history-drill">
+              <summary>{{ row.summary }}{% if row.summary_truncated %}…{% endif %}</summary>
+              <dl>
                 {% if row.input_summary_full %}
-                <dt class="muted" style="font-weight: 600; margin-top: 6px;">输入摘要</dt>
-                <dd style="margin: 2px 0 0 12px; white-space: pre-wrap;">{{ row.input_summary_full }}{% if row.summary_truncated %}（已截断）{% endif %}</dd>
+                <dt>输入摘要</dt>
+                <dd>{{ row.input_summary_full }}{% if row.summary_truncated %}（已截断）{% endif %}</dd>
                 {% endif %}
                 {% if row.output_summary_full %}
-                <dt class="muted" style="font-weight: 600; margin-top: 6px;">输出摘要</dt>
-                <dd style="margin: 2px 0 0 12px; white-space: pre-wrap;">{{ row.output_summary_full }}</dd>
+                <dt>输出摘要</dt>
+                <dd>{{ row.output_summary_full }}</dd>
                 {% endif %}
                 {% if row.error_kind %}
-                <dt class="muted" style="font-weight: 600; margin-top: 6px; color: var(--red);">错误类型</dt>
-                <dd style="margin: 2px 0 0 12px;">{{ row.error_kind }}</dd>
+                <dt class="is-error">错误类型</dt>
+                <dd>{{ row.error_kind }}</dd>
                 {% endif %}
                 {% if row.error_message %}
-                <dt class="muted" style="font-weight: 600; margin-top: 6px; color: var(--red);">错误信息</dt>
-                <dd style="margin: 2px 0 0 12px; white-space: pre-wrap;">{{ row.error_message }}</dd>
+                <dt class="is-error">错误信息</dt>
+                <dd>{{ row.error_message }}</dd>
                 {% endif %}
                 {% if row.validation_error_field %}
-                <dt class="muted" style="font-weight: 600; margin-top: 6px;">校验字段</dt>
-                <dd style="margin: 2px 0 0 12px;">{{ row.validation_error_field }}</dd>
+                <dt>校验字段</dt>
+                <dd>{{ row.validation_error_field }}</dd>
                 {% endif %}
                 {% if row.validation_error_message %}
-                <dt class="muted" style="font-weight: 600; margin-top: 6px;">校验信息</dt>
-                <dd style="margin: 2px 0 0 12px; white-space: pre-wrap;">{{ row.validation_error_message }}</dd>
+                <dt>校验信息</dt>
+                <dd>{{ row.validation_error_message }}</dd>
                 {% endif %}
               </dl>
             </details>

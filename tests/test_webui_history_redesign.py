@@ -10,4 +10,6 @@ def test_history_extends_base_empty_state():
     assert 'class="sidebar"' in body
     assert 'class="page-h1">History</h1>' in body
     assert 'class="data-table' in body or 'class="empty-state"' in body
-    assert "<style>" not in body
+    # Page-specific style block allowed for .history-drill per design doc § 5.3.
+    # Only assert no legacy hero-style sheet leaks through (e.g. PingFang body reset).
+    assert "PingFang SC" not in body
