@@ -211,6 +211,103 @@ def test_librarian_rejects_oversize_document(server):
 
 
 # ============================================================
+# librarian_handler — file_paths multi-file input (T8.1)
+# ============================================================
+
+
+def test_librarian_rejects_when_file_path_and_file_paths_both_supplied(server, tmp_path):
+    """3-way XOR: file_path + file_paths both supplied → input_validation error."""
+    f = tmp_path / "doc.md"
+    f.write_text("hello", encoding="utf-8")
+    result = asyncio.run(
+        server._librarian_impl(
+            {"file_path": str(f), "file_paths": [str(f)], "query": "x"}
+        )
+    )
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "exactly one" in err["message"]
+
+
+def test_librarian_rejects_when_file_paths_and_document_text_both_supplied(server, tmp_path):
+    """3-way XOR: file_paths + document_text both supplied → input_validation error."""
+    f = tmp_path / "doc.md"
+    f.write_text("hello", encoding="utf-8")
+    result = asyncio.run(
+        server._librarian_impl(
+            {"file_paths": [str(f)], "document_text": "inline", "query": "x"}
+        )
+    )
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+
+
+def test_librarian_rejects_oversize_combined_file_paths(server, tmp_path):
+    """Soft cap applies to the assembled multi-file document_text."""
+    a = tmp_path / "a.md"
+    b = tmp_path / "b.md"
+    a.write_text("x" * 50_000, encoding="utf-8")
+    b.write_text("y" * 50_000, encoding="utf-8")
+    result = asyncio.run(
+        server._librarian_impl(
+            {"file_paths": [str(a), str(b)], "query": "x"}
+        )
+    )
+    err = _parse_error(result)
+    assert err["error"] == "document_too_large"
+
+
+def test_librarian_rejects_file_paths_with_missing_entry(server, tmp_path):
+    """If any file_paths entry doesn't exist → file_not_found error naming that path."""
+    good = tmp_path / "good.md"
+    good.write_text("hi", encoding="utf-8")
+    missing = tmp_path / "missing.md"
+    result = asyncio.run(
+        server._librarian_impl(
+            {"file_paths": [str(good), str(missing)], "query": "x"}
+        )
+    )
+    err = _parse_error(result)
+    assert err["error"] == "file_not_found"
+    assert str(missing) in err["message"]
+
+
+def test_librarian_accepts_file_paths_multi_file(server, monkeypatch, tmp_path):
+    """file_paths=[a, b] assembles one delimited document_text and reaches the model."""
+    a = tmp_path / "a.md"
+    b = tmp_path / "b.md"
+    a.write_text("alpha content", encoding="utf-8")
+    b.write_text("beta content", encoding="utf-8")
+
+    valid_output = {
+        "hard_constraints": [],
+        "summary": "ok",
+        "recommend_full_read": [],
+        "concerns": [],
+    }
+    mock_create = AsyncMock(
+        return_value=_mock_deepseek_response(json.dumps(valid_output))
+    )
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    result = asyncio.run(
+        server._librarian_impl(
+            {"file_paths": [str(a), str(b)], "query": "find both"}
+        )
+    )
+
+    # Successful response (no error envelope at top level)
+    parsed = json.loads(result[0].text)
+    assert "error" not in parsed
+    # Delimited assembly reached the model
+    user_msg = mock_create.call_args.kwargs["messages"][1]["content"]
+    assert f"=== FILE: {a} ===" in user_msg
+    assert f"=== FILE: {b} ===" in user_msg
+    assert "alpha content" in user_msg
+    assert "beta content" in user_msg
+
+
+# ============================================================
 # librarian_handler — happy path with mocked DeepSeek client
 # ============================================================
 
