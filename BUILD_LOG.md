@@ -157,3 +157,112 @@ What happened:
 - Orchestrator code: exactly one piece of original work — the bootstrap integration replacing the inline `_load_dotenv` with a call to `load_credentials()`. `sys.exit` semantics + cross-file coordination is orchestrator territory.
 
 This was the recursion point: Maestro using Maestro to build Maestro, with every Epic 5 role earning its keep on its first real task. The dogfooding loop closes here — from this point forward dispatch became the default.
+
+---
+
+## v0.0.4 — Workflow tooling & Web UI redesign (in progress)
+
+### Epic 9 — Web UI all-pages redesign (closed 2026-05-16)
+
+Replaced the placeholder landing page and the eight pages of per-page
+inline CSS that had accumulated through Epics 0–7 with a unified
+**Dashboard Cockpit** design language, all eight pages now extending a
+single `_base.html` and styled from a single `maestro.css`.
+
+What shipped:
+
+- **ADR-0012** — locks the design tokens (palette, typography, spacing,
+  layout primitives, no-build stance).
+- **`docs/design/88-webui-redesign.md`** — 640-line design doc with
+  per-page wireframes, data sources, and component vocabulary.
+- **`_base.html`** — shared Jinja2 base with 220px sidebar + 7-link nav
+  + main content slot. Exposes `title`, `extra_head`, `content`,
+  `extra_scripts`, `nav_active` blocks.
+- **`maestro/webui/static/maestro.css`** — 550-line single static
+  stylesheet: tokens on `:root`, reset, sidebar layout, page header,
+  KPI strip, panel, entry tile, now-running, badges (8 variants),
+  forms, buttons (4 variants), empty state, data-table (+dense
+  variant), responsive floor.
+- **`GET /api/overview`** — new endpoint aggregating today's dispatches +
+  cumulative savings + active workers + open problems + 7-day sparkline
+  + now-running snapshot. Reads typed events from
+  `.maestro/logs/dispatch.jsonl` and cost rows from
+  `savings.resolve_log_path()` (two distinct files per project
+  convention).
+- **All 8 user-facing pages redesigned**: `/` (Overview), `/team`
+  (catalog + edit), `/wizard` (4 steps + field-error), `/scaffold`
+  (picker + plan + plan-row + apply), `/live`, `/history`, `/savings`
+  (+ empty / disabled / error), `/problems`.
+- Page-specific `<style>` exceptions allowed in `extra_head` for
+  unique components (wizard-progress, live's legacy class names,
+  history drill-down, problem-row variants) per design doc §5.3.
+- Sidebar nav `/team-catalog` route bug caught and fixed during T9.11
+  real-data smoke (actual route is `/team`).
+
+Per-task economics in `docs/data/dispatch-log.jsonl`; refresh
+`docs/savings.md` for the post-Epic-9 totals.
+
+### AI contributors (Epic 9)
+
+- **claude-opus** (orchestrator) — design doc + ADR-0012 + coder
+  specs + spec-fix iterations + journal.
+- **deepseek-v4-pro** — coder for T9.1, T9.2, T9.3, T9.4, T9.5, T9.6,
+  T9.7, T9.8, T9.9, T9.10.
+- **deepseek-v4-flash** — librarian (4 calls for T9.2 upstream contracts),
+  scribe (commit messages).
+- **deepseek-v4-pro** — reviewer (10 passes + 1 fail + retry on T9.8).
+
+### Lessons learned (Epic 9)
+
+1. **Real-data smoke catches what structural tests miss.** All 8
+   redesign tests asserted the same nav link `/team-catalog`, which was
+   wrong (route prefix is `/team`). Internal consistency hid the bug;
+   `curl`-ing all 11 routes end-to-end after the merge surfaced it
+   immediately. Pattern: full-route smoke is non-redundant with
+   per-template assertions when the template depends on a route the
+   test doesn't actually hit.
+
+2. **Synthetic test fixtures must replicate the production data
+   layout.** T9.2's `/api/overview` happy-path test wrote events to the
+   same file the test patched `resolve_log_path` to point at, masking
+   the fact that production has two separate files (typed events vs
+   cost rows). Bug only surfaced when running against the real on-disk
+   files. Going forward: when synthesizing fixtures, mirror the
+   production layout (multi-file, distinct shapes) — don't collapse to
+   the simplest model.
+
+3. **Page-specific `<style>` blocks are fine in moderation.** Wizard
+   progress dots, live's legacy card markup, history drill-down,
+   problem-row variants — each landed as ONE `<style>` block in
+   `extra_head`, justified by comment citing design doc §5.3. The
+   alternative (~30 single-use shared classes) was rejected. The
+   `<style>`-exception pattern is now established convention.
+
+4. **Coder empty-output requires manual re-dispatch (today).** T9.4's
+   first dispatch returned 97s of wall and 5.5k tokens with no body —
+   just the banner. Re-dispatched same spec verbatim, got correct
+   output 56s later. No protocol-level retry exists in the worker
+   infrastructure yet. Tracked as a v0.0.5 nice-to-have.
+
+5. **Wave-of-4-parallel works for file-disjoint redesigns.** Both
+   batches of Wave 2 (T9.3–T9.6 and T9.7–T9.10) dispatched 4 coders
+   simultaneously. Every coder output was file-disjoint from the other
+   three; merge order didn't matter. The orchestrator's per-task
+   spec-write + post-coder reviewer dispatch was the throughput
+   bottleneck, not the coders themselves.
+
+6. **One reviewer fail across 10 reviewer passes.** T9.8 was the only
+   fail (inline-style strictness on drill-down). Fix + re-review took
+   ~1 min. The other 9 passes had at most low-severity findings (Jinja
+   strict-undefined, one inline `font-size: 12px`) — none blocked
+   merge. This suggests the design doc + base template were stable
+   enough that parallel-dispatched coders mostly produced specifically
+   on-target output.
+
+7. **The wrong-URL bug shows the limit of internal test consistency.**
+   T9.1's spec hard-coded `/team-catalog` in the base template AND in
+   every redesign test that checked nav links. Eight subsequent coder
+   dispatches inherited the wrong URL via the design doc that cited
+   the base template. The full pytest suite stayed green throughout
+   the Epic until the very last task's real-data smoke. Reinforces:
+   tests written against a spec cannot validate the spec itself.

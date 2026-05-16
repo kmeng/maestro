@@ -14,7 +14,7 @@ def test_index_renders_overview_skeleton():
     assert 'id="kpi-open-problems"' in body
     assert 'id="sparkline"' in body
     assert 'id="now-running-body"' in body
-    for href in ["/team-catalog", "/scaffold", "/live", "/history", "/savings", "/problems"]:
+    for href in ["/team", "/scaffold", "/live", "/history", "/savings", "/problems"]:
         assert f'href="{href}"' in body
     assert 'class="sidebar"' in body
     assert "/api/overview" in body
