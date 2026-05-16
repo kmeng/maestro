@@ -825,7 +825,21 @@ LIBRARIAN_TOOL = Tool(
                 "description": (
                     "Absolute or repo-relative path to the document. Worker reads "
                     "the file. PREFERRED when the document is on disk — keeps the "
-                    "document text out of the caller's context."
+                    "document text out of the caller's context. "
+                    "Use `file_paths` instead when reading multiple files in one round-trip."
+                ),
+            },
+            "file_paths": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Optional list of absolute or repo-relative paths. Worker reads "
+                    "each file and produces one consolidated extraction. Use instead "
+                    "of file_path when the caller needs to surface constraints across "
+                    "multiple source files in one round-trip (e.g., 'props interfaces "
+                    "across these 5 React components'). Mutually exclusive with "
+                    "file_path and document_text — exactly one of the three must be "
+                    "provided."
                 ),
             },
             "document_text": {
@@ -974,17 +988,30 @@ async def _librarian_impl(arguments: dict) -> list[TextContent]:
     JSON output validation + verbatim-quote verification, cost telemetry
     (_emit_dispatch_row), and the _banner-embedded JSON output shape."""
     file_path = arguments.get("file_path")
+    file_paths = arguments.get("file_paths")
     document_text = arguments.get("document_text")
     query = arguments.get("query", "").strip()
 
-    # XOR contract: exactly one of file_path or document_text must be present.
+    # XOR contract: exactly one of file_path, file_paths, or document_text
+    # must be present. Empty list / empty string counts as not-present.
     has_path = bool(file_path)
+    has_paths = bool(file_paths)
     has_text = bool(document_text)
-    if has_path == has_text:
+    if sum((has_path, has_paths, has_text)) != 1:
         return _error_response(
             "input_validation",
-            "exactly one of file_path or document_text required",
+            "exactly one of file_path, file_paths, or document_text required",
         )
+
+    # Validate file_paths is a list of non-empty strings when provided
+    if has_paths:
+        if not isinstance(file_paths, list) or not all(
+            isinstance(p, str) and p for p in file_paths
+        ):
+            return _error_response(
+                "input_validation",
+                "file_paths must be a non-empty list of non-empty strings",
+            )
 
     if not query:
         return _error_response("input_validation", "query is required")
@@ -1017,6 +1044,31 @@ async def _librarian_impl(arguments: dict) -> list[TextContent]:
             )
         except Exception as e:
             return _error_response("file_read_error", f"{type(e).__name__}: {e}")
+
+    if file_paths:
+        # Multi-file mode: read each file, assemble one delimited document_text.
+        # Per-file headers (`=== FILE: <path> ===`) let the worker preserve
+        # per-file attribution in the `section` field of hard_constraints.
+        blocks: list[str] = []
+        for p in file_paths:
+            resolved = Path(p)
+            if not resolved.is_absolute():
+                resolved = _PROJECT_ROOT / resolved
+            try:
+                with open(resolved, encoding="utf-8") as f:
+                    content = f.read()
+            except FileNotFoundError:
+                return _error_response(
+                    "file_not_found",
+                    f"file_paths entry not found: {p} (resolved: {resolved})",
+                )
+            except Exception as e:
+                return _error_response(
+                    "file_read_error",
+                    f"{type(e).__name__}: {e} (at {p})",
+                )
+            blocks.append(f"=== FILE: {p} ===\n{content}")
+        document_text = "\n\n".join(blocks)
 
     if len(document_text) > MAX_DOCUMENT_CHARS:
         return _error_response(
