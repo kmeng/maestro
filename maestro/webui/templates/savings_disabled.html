@@ -1,15 +1,15 @@
 {% extends "_base.html" %}
 {% set nav_active = "savings" %}
-{% block title %}Savings{% endblock %}
+{% block title %}成本节省{% endblock %}
 {% block content %}
-  <h1 class="page-h1">Savings</h1>
+  <h1 class="page-h1">成本节省</h1>
   <div class="empty-state">
     <div class="empty-icon" style="color: var(--orange);">⊘</div>
-    <div class="empty-title">Telemetry is disabled</div>
+    <div class="empty-title">遥测已关闭</div>
     <div class="empty-body">
-      The environment variable <span class="mono">MAESTRO_DISPATCH_LOG</span> is set to an empty string, which turns off dispatch logging. No data is being recorded, so this page has nothing to show.<br><br>
-      To re-enable telemetry, unset the variable (<span class="mono">unset MAESTRO_DISPATCH_LOG</span>) or set it to the path where you want the log written. See the
-      <a href="/docs/savings-methodology.md#7-disabling-telemetry">methodology page §7</a> for details.
+      环境变量 <span class="mono">MAESTRO_DISPATCH_LOG</span> 被设为空字符串，调度日志被关闭。没有数据被记录，本页无内容可显示。<br><br>
+      要重新开启遥测，请取消该变量（<span class="mono">unset MAESTRO_DISPATCH_LOG</span>）或将其设为日志写入路径。详见
+      <a href="/docs/savings-methodology.md#7-disabling-telemetry">方法论 §7</a>。
     </div>
   </div>
 {% endblock %}

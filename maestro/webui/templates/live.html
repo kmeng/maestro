@@ -1,6 +1,6 @@
 {% extends "_base.html" %}
 {% set nav_active = "live" %}
-{% block title %}Live{% endblock %}
+{% block title %}实时调度{% endblock %}
 
 {% block extra_head %}
 <!-- Page-specific live-view styling for legacy class names that the inline JS depends on -->
@@ -45,7 +45,7 @@
 {% endblock %}
 
 {% block content %}
-  <h1 class="page-h1">Live</h1>
+  <h1 class="page-h1">实时调度</h1>
   <div class="page-sub">实时订阅 dispatch event 流（SSE）。</div>
   <div id="status" class="status-banner connecting">连接中…</div>
   <div class="zones">

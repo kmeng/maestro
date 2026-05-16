@@ -7,7 +7,7 @@ def test_index_renders_overview_skeleton():
     r = client.get("/")
     assert r.status_code == 200
     body = r.text
-    assert 'class="page-h1">Overview</h1>' in body
+    assert 'class="page-h1">总览</h1>' in body
     assert 'id="kpi-today-dispatches"' in body
     assert 'id="kpi-cumulative-savings"' in body
     assert 'id="kpi-active-workers"' in body

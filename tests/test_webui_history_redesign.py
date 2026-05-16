@@ -8,7 +8,7 @@ def test_history_extends_base_empty_state():
     assert r.status_code == 200
     body = r.text
     assert 'class="sidebar"' in body
-    assert 'class="page-h1">History</h1>' in body
+    assert 'class="page-h1">调度历史</h1>' in body
     assert 'class="data-table' in body or 'class="empty-state"' in body
     # Page-specific style block allowed for .history-drill per design doc § 5.3.
     # Only assert no legacy hero-style sheet leaks through (e.g. PingFang body reset).

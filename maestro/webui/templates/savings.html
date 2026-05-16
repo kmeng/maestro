@@ -1,56 +1,56 @@
 {% extends "_base.html" %}
 {% set nav_active = "savings" %}
-{% block title %}Savings{% endblock %}
+{% block title %}成本节省{% endblock %}
 {% block content %}
-  <h1 class="page-h1">Savings</h1>
+  <h1 class="page-h1">成本节省</h1>
   <div class="page-sub">
-    {% if headline.count == 0 %}No dispatches recorded yet
-    {% else %}{{ headline.count }} dispatch{{ "es" if headline.count != 1 else "" }} · {{ headline.date_min }}{% if headline.date_min != headline.date_max %} → {{ headline.date_max }}{% endif %}{% endif %}
+    {% if headline.count == 0 %}暂无调度记录
+    {% else %}{{ headline.count }} 次调度 · {{ headline.date_min }}{% if headline.date_min != headline.date_max %} → {{ headline.date_max }}{% endif %}{% endif %}
   </div>
 
   {% if headline.count > 0 %}
   <div class="kpis">
     <div class="kpi">
-      <div class="kpi-label">Total dispatches</div>
+      <div class="kpi-label">总调度数</div>
       <div class="kpi-value">{{ headline.count }}</div>
       <div class="kpi-delta neutral">{{ "{:,}".format(headline.total_tokens) }} tokens</div>
     </div>
     <div class="kpi">
-      <div class="kpi-label">Worker spend</div>
+      <div class="kpi-label">Worker 实付</div>
       <div class="kpi-value">${{ "%.2f"|format(headline.total_worker_usd) }}</div>
-      <div class="kpi-delta neutral">actual</div>
+      <div class="kpi-delta neutral">实际</div>
     </div>
     <div class="kpi">
-      <div class="kpi-label">Opus baseline</div>
+      <div class="kpi-label">Opus 基线</div>
       <div class="kpi-value">${{ "%.2f"|format(headline.total_opus_usd) }}</div>
-      <div class="kpi-delta neutral">if all on flagship</div>
+      <div class="kpi-delta neutral">若全部用旗舰</div>
     </div>
     <div class="kpi">
-      <div class="kpi-label">Saved</div>
+      <div class="kpi-label">节省</div>
       <div class="kpi-value">${{ "%.2f"|format(headline.saved_usd) }}</div>
-      <div class="kpi-delta up">{{ "%.1f"|format(headline.saved_pct) }}% off</div>
+      <div class="kpi-delta up">减免 {{ "%.1f"|format(headline.saved_pct) }}%</div>
     </div>
   </div>
   {% endif %}
 
   <section class="panel">
     <header class="panel-h">
-      <h2 class="panel-title">Per-role</h2>
+      <h2 class="panel-title">按角色</h2>
       <div class="panel-meta">
-        {% if excluded_count and excluded_count > 0 %}{{ excluded_count }} estimate row{{ "s" if excluded_count != 1 else "" }} excluded{% endif %}
+        {% if excluded_count and excluded_count > 0 %}已排除 {{ excluded_count }} 条估算行{% endif %}
       </div>
     </header>
     {% if per_role %}
     <table class="data-table data-table--dense">
       <thead>
         <tr>
-          <th>Role</th>
-          <th style="text-align: right;">Dispatches</th>
-          <th style="text-align: right;">Total tokens</th>
-          <th style="text-align: right;">Avg tokens/call</th>
-          <th style="text-align: right;">Avg wall (s)</th>
+          <th>角色</th>
+          <th style="text-align: right;">调度数</th>
+          <th style="text-align: right;">总 tokens</th>
+          <th style="text-align: right;">平均 tokens/次</th>
+          <th style="text-align: right;">平均耗时 (秒)</th>
           <th style="text-align: right;">Worker $</th>
-          <th style="text-align: right;">Opus $ (est.)</th>
+          <th style="text-align: right;">Opus $（估）</th>
         </tr>
       </thead>
       <tbody>
@@ -68,25 +68,25 @@
       </tbody>
     </table>
     {% else %}
-    <div class="muted">No measured rows yet.</div>
+    <div class="muted">暂无可计量数据。</div>
     {% endif %}
   </section>
 
   <section class="panel">
     <header class="panel-h">
-      <h2 class="panel-title">Per-time (UTC day)</h2>
-      <div class="panel-meta">{{ per_time|length }} day{{ "s" if per_time|length != 1 else "" }}</div>
+      <h2 class="panel-title">按时间（UTC 日）</h2>
+      <div class="panel-meta">{{ per_time|length }} 天</div>
     </header>
     {% if per_time %}
     <table class="data-table data-table--dense">
       <thead>
         <tr>
-          <th>Date</th>
-          <th style="text-align: right;">Dispatches</th>
+          <th>日期</th>
+          <th style="text-align: right;">调度数</th>
           <th style="text-align: right;">Tokens</th>
           <th style="text-align: right;">Worker $</th>
-          <th style="text-align: right;">Opus $ (est.)</th>
-          <th style="text-align: right;">Saved</th>
+          <th style="text-align: right;">Opus $（估）</th>
+          <th style="text-align: right;">节省</th>
         </tr>
       </thead>
       <tbody>
@@ -97,22 +97,22 @@
           <td class="mono" style="text-align: right;">{{ "{:,}".format(g.stats.total_tokens) }}</td>
           <td class="mono" style="text-align: right;">${{ "%.2f"|format(g.stats.total_worker_usd) }}</td>
           <td class="mono" style="text-align: right;">${{ "%.2f"|format(g.stats.total_opus_usd) }}</td>
-          <td class="mono" style="text-align: right; color: var(--green);">${{ "%.2f"|format(g.stats.saved_usd) }} ({{ "%.1f"|format(g.stats.saved_pct) }}%)</td>
+          <td class="mono" style="text-align: right; color: var(--green);">${{ "%.2f"|format(g.stats.saved_usd) }}（{{ "%.1f"|format(g.stats.saved_pct) }}%）</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
     {% else %}
-    <div class="muted">No dispatch days yet.</div>
+    <div class="muted">暂无调度日。</div>
     {% endif %}
   </section>
 
   <div class="muted" style="font-size: 12px; padding: 12px 0; line-height: 1.7;">
-    Reading from: <span class="mono">{{ log_path }}</span><br>
-    Last dispatch: {% if last_dispatch %}{{ last_dispatch }}{% else %}no dispatches yet{% endif %}<br>
-    Telemetry:
-    {% if telemetry_enabled %}<strong style="color: var(--green);">enabled</strong> · <a href="/docs/savings-methodology.md#7-disabling-telemetry">how to disable</a>
-    {% else %}<strong style="color: var(--orange);">disabled</strong>{% endif %}
-    {% if skipped_count and skipped_count > 0 %}<br>{{ skipped_count }} malformed row{{ "s" if skipped_count != 1 else "" }} skipped.{% endif %}
+    数据来源：<span class="mono">{{ log_path }}</span><br>
+    最后一次调度：{% if last_dispatch %}{{ last_dispatch }}{% else %}暂无调度{% endif %}<br>
+    遥测：
+    {% if telemetry_enabled %}<strong style="color: var(--green);">已开启</strong> · <a href="/docs/savings-methodology.md#7-disabling-telemetry">如何关闭</a>
+    {% else %}<strong style="color: var(--orange);">已关闭</strong>{% endif %}
+    {% if skipped_count and skipped_count > 0 %}<br>{{ skipped_count }} 条异常行已跳过。{% endif %}
   </div>
 {% endblock %}

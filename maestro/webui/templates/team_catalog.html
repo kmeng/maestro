@@ -1,12 +1,12 @@
 {% extends "_base.html" %}
 {% set nav_active = "team" %}
-{% block title %}Team{% endblock %}
+{% block title %}团队{% endblock %}
 {% block content %}
-  <h1 class="page-h1">Team</h1>
+  <h1 class="page-h1">团队</h1>
   <div class="page-sub">
     {% if missing %}尚未组建团队
     {% elif invalid %}team.yaml 配置无效，请通过向导修复
-    {% else %}4 roles + architect (主会话, 不可配置){% endif %}
+    {% else %}4 个角色 + 架构师（主会话，不可配置）{% endif %}
   </div>
 
   {% if missing %}
