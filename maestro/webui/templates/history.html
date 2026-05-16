@@ -1,74 +1,81 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <title>Maestro · 调度历史</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; max-width: 1200px; margin: 2em auto; padding: 0 1em; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 0.5em 0.75em; text-align: left; border-bottom: 1px solid #eee; }
-    th { background: #fafafa; font-weight: 600; }
-    .status-success { color: #2a8f3c; }
-    .status-failed { color: #c0392b; }
-    .status-refused { color: #888; }
-    .status-fallback { color: #b7791f; }
-    .status-fallback-only { color: #b7791f; }
-    .status-in-progress { color: #2074d4; }
-    .row-summary { color: #444; }
-    details { margin: 0.5em 0; }
-    details summary { cursor: pointer; }
-    .drill { background: #f6f8fa; padding: 1em; border-radius: 4px; margin-top: 0.5em; font-family: monospace; font-size: 0.9em; }
-    .drill dt { font-weight: 600; margin-top: 0.5em; color: #555; }
-    .drill dd { margin-left: 1em; white-space: pre-wrap; }
-    .badge-fallback { background: #fff3cd; color: #856404; padding: 0.1em 0.5em; border-radius: 3px; font-size: 0.85em; margin-left: 0.5em; }
-    .empty { padding: 3em; text-align: center; color: #888; }
-  </style>
-</head>
-<body>
-  <h1>调度历史</h1>
+{% extends "_base.html" %}
+{% set nav_active = "history" %}
+{% block title %}History{% endblock %}
+{% block content %}
+  <h1 class="page-h1">History</h1>
+  <div class="page-sub">{% if rows %}{{ rows|length }} 次调度，最新在前{% else %}暂无调度记录{% endif %}</div>
+
   {% if rows %}
-  <table>
-    <thead>
-      <tr>
-        <th>状态</th>
-        <th>时间</th>
-        <th>角色 / 成员</th>
-        <th>模型</th>
-        <th>用时</th>
-        <th>成本</th>
-        <th>摘要</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in rows %}
-      <tr>
-        <td class="status-{{ row.status | replace('_', '-') }}">{{ row.status_icon }} {{ row.status_label_zh }}</td>
-        <td title="{{ row.time_iso }}">{{ row.time_hms }}</td>
-        <td>{{ row.role_member }}{% if row.has_fallback_flag %}<span class="badge-fallback">↩ 已降级</span>{% endif %}</td>
-        <td>{{ row.model }}</td>
-        <td>{{ row.duration }}</td>
-        <td>{{ row.cost }}</td>
-        <td class="row-summary">
-          <details>
-            <summary>{{ row.summary }}{% if row.summary_truncated %}…{% endif %}</summary>
-            <div class="drill">
-              <dl>
-                {% if row.input_summary_full %}<dt>输入摘要</dt><dd>{{ row.input_summary_full }}{% if row.summary_truncated %}（已截断）{% endif %}</dd>{% endif %}
-                {% if row.output_summary_full %}<dt>输出摘要</dt><dd>{{ row.output_summary_full }}</dd>{% endif %}
-                {% if row.error_kind %}<dt>错误类型</dt><dd>{{ row.error_kind }}</dd>{% endif %}
-                {% if row.error_message %}<dt>错误信息</dt><dd>{{ row.error_message }}</dd>{% endif %}
-                {% if row.validation_error_field %}<dt>校验字段</dt><dd>{{ row.validation_error_field }}</dd>{% endif %}
-                {% if row.validation_error_message %}<dt>校验信息</dt><dd>{{ row.validation_error_message }}</dd>{% endif %}
+  <section class="panel">
+    <table class="data-table data-table--dense">
+      <thead>
+        <tr>
+          <th>状态</th>
+          <th>时间</th>
+          <th>角色 / 成员</th>
+          <th>模型</th>
+          <th>用时</th>
+          <th>成本</th>
+          <th>摘要</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>
+            {% if row.status == 'success' %}<span class="badge badge-ok">{{ row.status_icon }} {{ row.status_label_zh }}</span>
+            {% elif row.status == 'failed' %}<span class="badge badge-fail">{{ row.status_icon }} {{ row.status_label_zh }}</span>
+            {% elif row.status == 'refused' %}<span class="badge badge-refused">{{ row.status_icon }} {{ row.status_label_zh }}</span>
+            {% elif row.status == 'in_progress' %}<span class="badge badge-running">{{ row.status_icon }} {{ row.status_label_zh }}</span>
+            {% elif row.status == 'fallback_only' %}<span class="badge badge-fallback">{{ row.status_icon }} {{ row.status_label_zh }}</span>
+            {% else %}<span class="badge">{{ row.status_icon }} {{ row.status_label_zh }}</span>{% endif %}
+          </td>
+          <td class="mono" title="{{ row.time_iso }}">{{ row.time_hms }}</td>
+          <td>{{ row.role_member }}{% if row.has_fallback_flag %}<span class="badge badge-fallback" style="margin-left: 6px;">↩ 已降级</span>{% endif %}</td>
+          <td class="mono">{{ row.model }}</td>
+          <td class="mono">{{ row.duration }}</td>
+          <td class="mono">{{ row.cost }}</td>
+          <td>
+            <details>
+              <summary style="cursor: pointer;">{{ row.summary }}{% if row.summary_truncated %}…{% endif %}</summary>
+              <dl style="margin: 8px 0 0; font-size: 12.5px; line-height: 1.6;">
+                {% if row.input_summary_full %}
+                <dt class="muted" style="font-weight: 600; margin-top: 6px;">输入摘要</dt>
+                <dd style="margin: 2px 0 0 12px; white-space: pre-wrap;">{{ row.input_summary_full }}{% if row.summary_truncated %}（已截断）{% endif %}</dd>
+                {% endif %}
+                {% if row.output_summary_full %}
+                <dt class="muted" style="font-weight: 600; margin-top: 6px;">输出摘要</dt>
+                <dd style="margin: 2px 0 0 12px; white-space: pre-wrap;">{{ row.output_summary_full }}</dd>
+                {% endif %}
+                {% if row.error_kind %}
+                <dt class="muted" style="font-weight: 600; margin-top: 6px; color: var(--red);">错误类型</dt>
+                <dd style="margin: 2px 0 0 12px;">{{ row.error_kind }}</dd>
+                {% endif %}
+                {% if row.error_message %}
+                <dt class="muted" style="font-weight: 600; margin-top: 6px; color: var(--red);">错误信息</dt>
+                <dd style="margin: 2px 0 0 12px; white-space: pre-wrap;">{{ row.error_message }}</dd>
+                {% endif %}
+                {% if row.validation_error_field %}
+                <dt class="muted" style="font-weight: 600; margin-top: 6px;">校验字段</dt>
+                <dd style="margin: 2px 0 0 12px;">{{ row.validation_error_field }}</dd>
+                {% endif %}
+                {% if row.validation_error_message %}
+                <dt class="muted" style="font-weight: 600; margin-top: 6px;">校验信息</dt>
+                <dd style="margin: 2px 0 0 12px; white-space: pre-wrap;">{{ row.validation_error_message }}</dd>
+                {% endif %}
               </dl>
-            </div>
-          </details>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+            </details>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
   {% else %}
-  <div class="empty">暂无调度记录。开始一次任务调度后将在此显示。</div>
+  <div class="empty-state">
+    <div class="empty-icon">≡</div>
+    <div class="empty-title">暂无调度记录</div>
+    <div class="empty-body">开始一次任务调度后将在此显示。<br>使用 Claude Code 主会话调用 maestro MCP 的任意 worker tool（coder / librarian / reviewer / scribe）。</div>
+  </div>
   {% endif %}
-</body>
-</html>
+{% endblock %}
