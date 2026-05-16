@@ -149,3 +149,11 @@ def test_resolve_role_model_rejects_unknown_role(tmp_path: Path):
     """A role in neither ROLE_IDS nor SHIPPED_TOOL_IDS is a caller bug."""
     with pytest.raises(ValueError, match="unknown role_id"):
         resolve_role_model("nonsense", tmp_path)
+
+
+def test_resolve_role_model_accepts_spec_writer_returns_default_model(tmp_path: Path):
+    """T8.3: spec-writer is in SHIPPED_TOOL_IDS; bypasses team.yaml."""
+    result = resolve_role_model("spec-writer", tmp_path)
+    assert isinstance(result, ResolveOk)
+    assert result.model == DEFAULT_MODELS["spec-writer"]
+    assert result.event is None

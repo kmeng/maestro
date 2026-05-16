@@ -48,13 +48,14 @@ OUT_PATH  = REPO_ROOT / "docs" / "savings.md"
 # ---------------------------------------------------------------------------
 
 def _tool_breakdown_str(tool_counts: dict[str, int]) -> str:
-    """Render e.g. '3 (c1 l1 r1 s0 v0)' in fixed coder/lib/rev/scribe/verifier order."""
+    """Render e.g. '3 (c1 l1 r1 s0 v0 w0)' in fixed coder/librarian/reviewer/scribe/verifier/spec-writer order."""
     c = tool_counts.get("coder", 0)
     l = tool_counts.get("librarian", 0)
     r = tool_counts.get("reviewer", 0)
     s = tool_counts.get("scribe", 0)
     v = tool_counts.get("verifier", 0)
-    return f"{sum(tool_counts.values())} (c{c} l{l} r{r} s{s} v{v})"
+    w = tool_counts.get("spec-writer", 0)
+    return f"{sum(tool_counts.values())} (c{c} l{l} r{r} s{s} v{v} w{w})"
 
 
 def render_per_task_table(task_groups: list[dict]) -> str:

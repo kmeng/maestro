@@ -2032,6 +2032,397 @@ async def _verifier_impl(arguments: dict) -> list[TextContent]:
 
 
 # ============================================================
+# Role: spec-writer (T8.3)
+#
+# Draft coder specs from structured task descriptions, acceptance
+# criteria, and upstream contracts. Returns {spec, verification_checklist,
+# concerns}. Shipped infrastructure tool (not in team.yaml; uses
+# DEFAULT_MODELS).
+#
+# Shadow-mode: this role ships but is NOT used in Maestro's own
+# orchestration until T8.7's shadow-trial wave validates output quality.
+# See docs/playbook/contract-sheets.md § Shadow-mode protocol.
+# ============================================================
+
+SPEC_WRITER_SYSTEM_PROMPT = """You are a spec-writer on an AI software team. Your
+job is to draft a coder spec from a structured task description, acceptance
+criteria, and upstream contracts the caller has assembled. You return STRICT
+JSON matching the contract below.
+
+A good coder spec has these sections, in this order:
+
+1. **Goal** — one paragraph: what this task achieves.
+2. **Design references** — bullet list of paths to design docs, ADRs, parent
+   epic; mark any that are mandatory reading.
+3. **Scope** — bullet list of what this task does, plus an explicit list of
+   what it does NOT do (out-of-scope).
+4. **Files this dispatch touches** — list every file the coder will read or
+   modify; mark each "modify" or "new".
+5. **For each modified file: current content** — paste verbatim if available
+   in `upstream_contracts`; otherwise instruct the coder to NOT modify regions
+   you cannot show.
+6. **Required edits / new code** — explicit instructions per file.
+7. **Acceptance criteria mapping** — for each AC the caller provided, one
+   sentence saying which approach covers it.
+8. **Failure contracts** — for any public API you add, enumerate what raises
+   what (per memory `feedback_api_failure_contract_explicit`).
+9. **Test plan** — list of new tests by name and one-line description.
+10. **Output format** — instruct coder to return full files or anchored
+    snippets per change size.
+
+Rules:
+
+- Use only the inputs provided. Do NOT invent acceptance criteria, file paths,
+  or upstream APIs not present in `upstream_contracts`.
+- The `verification_checklist` is a list of "did the spec author verify X?"
+  questions, one per file in `output_files`. Each entry forces an explicit
+  gate (e.g., "verify maestro/foo/bar.py exists at the path the spec
+  references").
+- The `concerns` list is for ambiguities in the input: missing context,
+  conflicting requirements, undefined terms, gaps in upstream_contracts that
+  the spec needs but doesn't have.
+- If `shared_constraints` or `risk_markers` are provided, weave them into the
+  appropriate sections (constraints typically into Scope; risks into a
+  separate "Risks" subsection under Acceptance criteria).
+- `language` informs the spec's language-specific conventions (e.g., python:
+  mention pytest, type hints; typescript: mention tsc, type imports).
+- The `spec` field is the FULL coder-ready spec text, ready to paste into
+  `mcp__maestro__coder`'s `spec` parameter unchanged.
+
+Return JSON of exactly this shape:
+{
+  "spec": "...",
+  "verification_checklist": ["..."],
+  "concerns": ["..."]
+}
+
+Empty `concerns` list is allowed if the input was complete. The
+`verification_checklist` should have at least one entry per `output_files`
+entry — never empty when `output_files` is non-empty.
+
+Do NOT include any text outside the JSON object."""
+
+
+SPEC_WRITER_TOOL = Tool(
+    name="spec_writer",
+    description=(
+        "Draft a coder spec from a structured task description, acceptance "
+        "criteria, and upstream contracts. USE for: shifting the mechanical "
+        "spec-drafting load off the orchestrator to a cheaper model. Returns "
+        "{spec, verification_checklist, concerns}. DO NOT USE for: producing "
+        "code (use coder); reviewing code (use reviewer); reading source "
+        "(use librarian)."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "task_description": {
+                "type": "string",
+                "description": (
+                    "Free-form prose: what this task is and why it exists. "
+                    "Becomes the Goal section of the drafted spec."
+                ),
+            },
+            "acceptance_criteria": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Acceptance criteria as a list of strings. Each entry "
+                    "becomes a bullet under the Acceptance criteria section; "
+                    "spec-writer also produces a per-AC mapping showing which "
+                    "approach covers it."
+                ),
+            },
+            "upstream_contracts": {
+                "type": "string",
+                "description": (
+                    "Verbatim text the caller has assembled: signatures of "
+                    "upstream functions, model definitions, contract sheet "
+                    "quotes, full file contents for files being modified, etc. "
+                    "Spec-writer pastes these into the spec's 'current content' "
+                    "sections; treat as the source of truth for what the coder "
+                    "will see. Typically the output of one or more librarian "
+                    "calls or a docs/contracts/<scope>.md reference."
+                ),
+            },
+            "shared_constraints": {
+                "type": "string",
+                "description": (
+                    "Optional free-form constraints that apply to the whole "
+                    "task (e.g., 'do not introduce a new dependency', 'tests "
+                    "must run offline', 'preserve backward compat for callers "
+                    "of function X'). Folded into the Scope section."
+                ),
+            },
+            "risk_markers": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Optional list of known risks or trap-doors for this task "
+                    "(e.g., 'conftest.py autouse subprocess patch — see "
+                    "feedback_conftest_subprocess_patch_trap'). Each entry "
+                    "becomes a bullet under a 'Risks' subsection of the spec."
+                ),
+            },
+            "output_files": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "List of file paths the coder will produce or modify. "
+                    "Used to populate the 'Files this dispatch touches' "
+                    "section and to generate the verification_checklist (one "
+                    "entry per file)."
+                ),
+            },
+            "language": {
+                "type": "string",
+                "description": (
+                    "Programming language for the task (e.g., 'python', "
+                    "'typescript'). Spec-writer uses this to choose "
+                    "language-specific conventions in the spec."
+                ),
+            },
+            "task_id": {
+                "type": "string",
+                "description": (
+                    "Optional task identifier (e.g., 'T6.8') for dispatch "
+                    "telemetry attribution. See ADR-0011."
+                ),
+            },
+            "issue_number": {
+                "type": "integer",
+                "description": (
+                    "Optional issue number (e.g., 64) for dispatch telemetry "
+                    "attribution. See ADR-0011."
+                ),
+            },
+        },
+        "required": [
+            "task_description",
+            "acceptance_criteria",
+            "upstream_contracts",
+            "output_files",
+            "language",
+        ],
+    },
+)
+
+
+def _validate_spec_writer_output(data: Any) -> Optional[str]:
+    """Verify the parsed JSON output matches the spec-writer contract.
+
+    Returns None on success, or a short string explaining the violation.
+    Extra fields are ignored (forward compatibility).
+    """
+    if not isinstance(data, dict):
+        return "output is not a dict"
+
+    if "spec" not in data:
+        return "missing key: spec"
+    if not isinstance(data["spec"], str) or not data["spec"]:
+        return "spec is not a non-empty string"
+
+    if "verification_checklist" not in data:
+        return "missing key: verification_checklist"
+    checklist = data["verification_checklist"]
+    if not isinstance(checklist, list):
+        return "verification_checklist is not a list"
+    for i, item in enumerate(checklist):
+        if not isinstance(item, str) or not item:
+            return f"verification_checklist[{i}] is not a non-empty string"
+
+    if "concerns" not in data:
+        return "missing key: concerns"
+    concerns = data["concerns"]
+    if not isinstance(concerns, list):
+        return "concerns is not a list"
+    for i, item in enumerate(concerns):
+        if not isinstance(item, str):
+            return f"concerns[{i}] is not a string"
+
+    return None
+
+
+async def spec_writer_handler(arguments: dict) -> list[TextContent]:
+    """Enqueue the spec-writer impl as a background job; return job_id immediately.
+
+    See ADR-0009. Caller polls `job_status(job_id)` until terminal.
+    """
+    return _enqueue_dispatch("spec-writer", _spec_writer_impl(arguments))
+
+
+async def _spec_writer_impl(arguments: dict) -> list[TextContent]:
+    """Draft a coder spec from structured inputs.
+
+    Thin wrapper over dispatcher.run — lifecycle events flow through the
+    central dispatcher; the handler keeps argument validation, prompt
+    assembly, JSON output validation, cost telemetry (_emit_dispatch_row),
+    and the _banner-embedded JSON output shape."""
+    task_description = arguments.get("task_description", "")
+    acceptance_criteria = arguments.get("acceptance_criteria")
+    upstream_contracts = arguments.get("upstream_contracts", "")
+    shared_constraints = arguments.get("shared_constraints", "")
+    risk_markers = arguments.get("risk_markers")
+    output_files = arguments.get("output_files")
+    language = arguments.get("language", "")
+
+    if not isinstance(task_description, str) or not task_description.strip():
+        return _error_response(
+            "input_validation",
+            "task_description is required and must be a non-empty string",
+        )
+    if not isinstance(acceptance_criteria, list) or not acceptance_criteria or not all(
+        isinstance(ac, str) and ac.strip() for ac in acceptance_criteria
+    ):
+        return _error_response(
+            "input_validation",
+            "acceptance_criteria must be a non-empty list of non-empty strings",
+        )
+    if not isinstance(upstream_contracts, str) or not upstream_contracts.strip():
+        return _error_response(
+            "input_validation",
+            "upstream_contracts is required and must be a non-empty string",
+        )
+    if not isinstance(output_files, list) or not output_files or not all(
+        isinstance(p, str) and p for p in output_files
+    ):
+        return _error_response(
+            "input_validation",
+            "output_files must be a non-empty list of non-empty strings",
+        )
+    if not isinstance(language, str) or not language.strip():
+        return _error_response(
+            "input_validation",
+            "language is required and must be a non-empty string",
+        )
+
+    # Optional fields with type validation
+    if not isinstance(shared_constraints, str):
+        return _error_response("input_validation", "shared_constraints must be a string")
+    if risk_markers is not None:
+        if not isinstance(risk_markers, list) or not all(
+            isinstance(r, str) for r in risk_markers
+        ):
+            return _error_response(
+                "input_validation",
+                "risk_markers must be a list of strings",
+            )
+
+    # T6.8 attribution fields (optional; ADR-0011)
+    attribution_task_id = arguments.get("task_id")
+    if attribution_task_id is not None and not isinstance(attribution_task_id, str):
+        return _error_response("input_validation", "task_id must be a string")
+    attribution_issue_number = arguments.get("issue_number")
+    if attribution_issue_number is not None and not isinstance(attribution_issue_number, int):
+        return _error_response("input_validation", "issue_number must be an integer")
+
+    # Assemble the user prompt. The structured shape helps the model
+    # produce a consistently-shaped spec.
+    ac_block = "\n".join(f"- {ac}" for ac in acceptance_criteria)
+    of_block = "\n".join(f"- {p}" for p in output_files)
+    rm_block = (
+        "\n".join(f"- {r}" for r in risk_markers) if risk_markers else "(none provided)"
+    )
+    sc_block = shared_constraints.strip() if shared_constraints else "(none provided)"
+
+    user_prompt = (
+        f"Language: {language}\n\n"
+        f"Task description:\n{task_description}\n\n"
+        f"Acceptance criteria:\n{ac_block}\n\n"
+        f"Output files (coder will produce/modify):\n{of_block}\n\n"
+        f"Shared constraints:\n{sc_block}\n\n"
+        f"Risk markers:\n{rm_block}\n\n"
+        f"Upstream contracts (verbatim, paste into spec as 'current content' sections):\n"
+        f"{upstream_contracts}"
+    )
+
+    # Soft cap on combined prompt — same MAX_DOCUMENT_CHARS as librarian.
+    if len(user_prompt) > MAX_DOCUMENT_CHARS:
+        return _error_response(
+            "document_too_large",
+            f"combined inputs are {len(user_prompt)} chars "
+            f"(limit {MAX_DOCUMENT_CHARS}); "
+            "shorten upstream_contracts or split the task",
+        )
+
+    captured_model: list[Optional[str]] = [None]
+    captured_usage: dict = {}
+
+    async def executor(model: str) -> str:
+        captured_model[0] = model
+        resp = await deepseek.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": SPEC_WRITER_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+        )
+        captured_usage.update({
+            "prompt_tokens": resp.usage.prompt_tokens,
+            "completion_tokens": resp.usage.completion_tokens,
+            "total_tokens": resp.usage.total_tokens,
+        })
+        return resp.choices[0].message.content
+
+    start = time.time()
+    try:
+        result = await dispatcher_run("spec-writer", user_prompt, executor)
+    except asyncio.TimeoutError:
+        duration = round(time.time() - start, 2)
+        error_msg = "model_timeout"
+        _emit_dispatch_row(
+            task_id=attribution_task_id, issue_number=attribution_issue_number,
+            tool="spec-writer", model=captured_model[0] or "unknown",
+            model_provider="deepseek", started_at=start, duration=duration,
+            usage=captured_usage or None, error=error_msg,
+        )
+        return _error_response("model_api_error", error_msg)
+    except Exception as e:
+        duration = round(time.time() - start, 2)
+        error_msg = f"model_api_error: {type(e).__name__}: {e}"
+        _emit_dispatch_row(
+            task_id=attribution_task_id, issue_number=attribution_issue_number,
+            tool="spec-writer", model=captured_model[0] or "unknown",
+            model_provider="deepseek", started_at=start, duration=duration,
+            usage=captured_usage or None, error=error_msg,
+        )
+        return _error_response("model_api_error", error_msg)
+
+    duration = round(time.time() - start, 2)
+
+    if isinstance(result, str) and result.startswith("team.yaml at"):
+        # Defensive: spec-writer bypasses team.yaml so this shouldn't fire,
+        # but match the verifier/librarian pattern for shape uniformity.
+        return [TextContent(type="text", text=result)]
+
+    try:
+        parsed = json.loads(result)
+    except json.JSONDecodeError as e:
+        return _error_response("output_not_json", str(e), raw=result[:500])
+
+    validation_error = _validate_spec_writer_output(parsed)
+    if validation_error:
+        return _error_response("output_schema_invalid", validation_error, raw=parsed)
+
+    parsed["_banner"] = _build_banner(
+        "spec-writer", captured_model[0], duration, captured_usage["total_tokens"]
+    )
+
+    _emit_dispatch_row(
+        task_id=attribution_task_id, issue_number=attribution_issue_number,
+        tool="spec-writer", model=captured_model[0], model_provider="deepseek",
+        started_at=start, duration=duration, usage=captured_usage, error=None,
+    )
+
+    return [TextContent(
+        type="text",
+        text=json.dumps(parsed, ensure_ascii=False, indent=2),
+    )]
+
+
+# ============================================================
 # Tool registry — single source of truth.
 # Adding a new role = one (Tool, handler) entry below.
 # ============================================================
@@ -2044,6 +2435,7 @@ TOOLS_REGISTRY: dict[str, tuple[Tool, ToolHandler]] = {
     REVIEWER_TOOL.name: (REVIEWER_TOOL, reviewer_handler),
     SCRIBE_TOOL.name: (SCRIBE_TOOL, scribe_handler),
     VERIFIER_TOOL.name: (VERIFIER_TOOL, verifier_handler),
+    SPEC_WRITER_TOOL.name: (SPEC_WRITER_TOOL, spec_writer_handler),
     JOB_STATUS_TOOL.name: (JOB_STATUS_TOOL, job_status_handler),
 }
 
