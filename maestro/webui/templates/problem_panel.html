@@ -1,105 +1,124 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <title>Maestro · 问题面板</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; max-width: 900px; margin: 2em auto; padding: 0 1em; }
-    h1, h2 { color: #222; }
-    h2 { font-size: 1.1em; border-bottom: 2px solid #eee; padding-bottom: 0.3em; margin-top: 2em; }
-    .category { margin-bottom: 2em; }
-    .row { border: 1px solid #e1e4e8; border-radius: 6px; padding: 0.8em 1em; margin-bottom: 0.6em; background: #fff; display: flex; justify-content: space-between; align-items: flex-start; gap: 1em; }
-    .row.acked { opacity: 0.4; }
-    .row .body { flex: 1; }
-    .row .time { color: #888; font-size: 0.85em; font-variant-numeric: tabular-nums; }
-    .row .role { font-weight: 600; }
-    .row .detail { color: #444; margin-top: 0.3em; font-size: 0.95em; }
-    .row .actions { display: flex; flex-direction: column; gap: 0.4em; align-items: flex-end; }
-    .row.failure { border-left: 3px solid #c0392b; }
-    .row.refusal { border-left: 3px solid #888; }
-    .row.fallback { border-left: 3px solid #b7791f; }
-    .cta-btn { display: inline-block; padding: 0.3em 0.8em; background: #2074d4; color: white; text-decoration: none; border-radius: 4px; font-size: 0.9em; white-space: nowrap; }
-    .cta-btn:hover { background: #1a5fa8; }
-    .ack-btn { background: none; border: 1px solid #ccc; color: #666; padding: 0.2em 0.6em; border-radius: 4px; font-size: 0.85em; cursor: pointer; }
-    .ack-btn:hover { background: #f0f0f0; }
-    .empty-section { color: #aaa; font-style: italic; padding: 1em 0; }
-    .empty-all { padding: 4em 1em; text-align: center; color: #888; font-size: 1.05em; }
-  </style>
-</head>
-<body>
-  <h1>问题面板</h1>
+{% extends "_base.html" %}
+{% set nav_active = "problems" %}
+{% block title %}Problems{% endblock %}
+
+{% block extra_head %}
+<!-- Page-specific acked-row fade styling (inline JS toggles .acked class) -->
+<style>
+.problem-row {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 16px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 16px; margin-bottom: 10px;
+  background: var(--panel);
+  transition: opacity 0.2s;
+}
+.problem-row.acked { opacity: 0.35; }
+.problem-row .problem-body { flex: 1; }
+.problem-row .problem-time {
+  color: var(--muted); font-size: 12px;
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  margin-right: 8px;
+}
+.problem-row .problem-role { font-weight: 600; font-size: 13.5px; }
+.problem-row .problem-detail { color: var(--fg); margin-top: 6px; font-size: 13px; line-height: 1.5; }
+.problem-row.failure { border-left: 3px solid var(--red); }
+.problem-row.refusal { border-left: 3px solid var(--muted); }
+.problem-row.fallback { border-left: 3px solid var(--orange); }
+.problem-row .problem-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; flex-shrink: 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+  <h1 class="page-h1">Problems</h1>
+  <div class="page-sub">
+    {% if has_any %}{{ failures|length }} failures · {{ refusals|length }} refusals · {{ fallback_groups|length }} fallback group{{ "s" if fallback_groups|length != 1 else "" }}
+    {% else %}一切运行良好{% endif %}
+  </div>
 
   {% if not has_any %}
-  <div class="empty-all">暂无需要关注的问题，团队运行良好。</div>
+    <div class="empty-state">
+      <div class="empty-icon" style="color: var(--green);">✓</div>
+      <div class="empty-title">Nothing to flag</div>
+      <div class="empty-body">没有失败、没有拒绝、没有降级。团队运行良好。</div>
+    </div>
   {% else %}
+    <section class="panel">
+      <header class="panel-h">
+        <h2 class="panel-title">失败的调度</h2>
+        <div class="panel-meta">{{ failures|length }} 条</div>
+      </header>
+      {% if failures %}
+        {% for f in failures %}
+        <div class="problem-row failure" data-row-id="failure-{{ loop.index }}">
+          <div class="problem-body">
+            <span class="problem-time" title="{{ f.time_iso }}">{{ f.time_hms }}</span>
+            <span class="problem-role">{{ f.role }}</span>
+            <div class="problem-detail"><strong style="color: var(--red);">{{ f.error_kind }}</strong>: {{ f.error_message }}</div>
+          </div>
+          <div class="problem-actions">
+            <button class="btn btn-ghost" onclick="ackRow(this)">已知悉</button>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="muted">无</div>
+      {% endif %}
+    </section>
 
-  <section class="category" id="failures">
-    <h2>失败的调度</h2>
-    {% if failures %}
-      {% for f in failures %}
-      <div class="row failure" data-row-id="failure-{{ loop.index }}">
-        <div class="body">
-          <span class="time" title="{{ f.time_iso }}">{{ f.time_hms }}</span>
-          <span class="role">{{ f.role }}</span>
-          <div class="detail"><strong>{{ f.error_kind }}</strong>: {{ f.error_message }}</div>
+    <section class="panel">
+      <header class="panel-h">
+        <h2 class="panel-title">团队配置被拒</h2>
+        <div class="panel-meta">{{ refusals|length }} 条</div>
+      </header>
+      {% if refusals %}
+        {% for r in refusals %}
+        <div class="problem-row refusal" data-row-id="refusal-{{ loop.index }}">
+          <div class="problem-body">
+            <span class="problem-time" title="{{ r.time_iso }}">{{ r.time_hms }}</span>
+            <div class="problem-detail"><strong>{{ r.validation_error_field }}</strong>: {{ r.validation_error_message }}</div>
+          </div>
+          <div class="problem-actions">
+            <a class="btn btn-primary" href="/team">打开团队配置修复</a>
+            <button class="btn btn-ghost" onclick="ackRow(this)">已知悉</button>
+          </div>
         </div>
-        <div class="actions">
-          <button class="ack-btn" onclick="ackRow(this)">已知悉</button>
-        </div>
-      </div>
-      {% endfor %}
-    {% else %}
-      <div class="empty-section">无</div>
-    {% endif %}
-  </section>
+        {% endfor %}
+      {% else %}
+        <div class="muted">无</div>
+      {% endif %}
+    </section>
 
-  <section class="category" id="refusals">
-    <h2>团队配置被拒</h2>
-    {% if refusals %}
-      {% for r in refusals %}
-      <div class="row refusal" data-row-id="refusal-{{ loop.index }}">
-        <div class="body">
-          <span class="time" title="{{ r.time_iso }}">{{ r.time_hms }}</span>
-          <div class="detail"><strong>{{ r.validation_error_field }}</strong>: {{ r.validation_error_message }}</div>
+    <section class="panel">
+      <header class="panel-h">
+        <h2 class="panel-title">团队配置缺失（降级）</h2>
+        <div class="panel-meta">{{ fallback_groups|length }} 组</div>
+      </header>
+      {% if fallback_groups %}
+        {% for g in fallback_groups %}
+        <div class="problem-row fallback" data-row-id="fallback-{{ loop.index }}">
+          <div class="problem-body">
+            <span class="problem-role">{{ g.role }}</span>
+            <div class="problem-detail">{{ g.count }} 次调度使用了降级模型 <span class="mono">{{ g.fallback_model }}</span>。配置团队后将使用您指定的模型。</div>
+          </div>
+          <div class="problem-actions">
+            <a class="btn btn-primary" href="/wizard">配置团队</a>
+            <button class="btn btn-ghost" onclick="ackRow(this)">已知悉</button>
+          </div>
         </div>
-        <div class="actions">
-          <a class="cta-btn" href="/team">打开团队配置修复</a>
-          <button class="ack-btn" onclick="ackRow(this)">已知悉</button>
-        </div>
-      </div>
-      {% endfor %}
-    {% else %}
-      <div class="empty-section">无</div>
-    {% endif %}
-  </section>
-
-  <section class="category" id="fallbacks">
-    <h2>团队配置缺失（降级）</h2>
-    {% if fallback_groups %}
-      {% for g in fallback_groups %}
-      <div class="row fallback" data-row-id="fallback-{{ loop.index }}">
-        <div class="body">
-          <span class="role">{{ g.role }}</span>
-          <div class="detail">{{ g.count }} 次调度使用了降级模型 <code>{{ g.fallback_model }}</code>。配置团队后将使用您指定的模型。</div>
-        </div>
-        <div class="actions">
-          <a class="cta-btn" href="/wizard">配置团队</a>
-          <button class="ack-btn" onclick="ackRow(this)">已知悉</button>
-        </div>
-      </div>
-      {% endfor %}
-    {% else %}
-      <div class="empty-section">无</div>
-    {% endif %}
-  </section>
-
+        {% endfor %}
+      {% else %}
+        <div class="muted">无</div>
+      {% endif %}
+    </section>
   {% endif %}
+{% endblock %}
 
-  <script>
-  function ackRow(btn) {
-    const row = btn.closest('.row');
-    if (row) row.classList.add('acked');
-  }
-  </script>
-</body>
-</html>
+{% block extra_scripts %}
+<script>
+function ackRow(btn) {
+  const row = btn.closest('.problem-row');
+  if (row) row.classList.add('acked');
+}
+</script>
+{% endblock %}
