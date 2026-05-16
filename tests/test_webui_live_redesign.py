@@ -8,7 +8,7 @@ def test_live_extends_base_with_zones_skeleton():
     assert r.status_code == 200
     body = r.text
     assert 'class="sidebar"' in body
-    assert 'class="page-h1">Live</h1>' in body
+    assert 'class="page-h1">实时调度</h1>' in body
     assert 'id="status"' in body
     assert 'id="running"' in body
     assert 'id="completed"' in body

@@ -58,7 +58,7 @@ def test_index_contains_overview_skeleton():
     """
     response = client.get("/")
     body = response.text
-    assert 'class="page-h1">Overview</h1>' in body
+    assert 'class="page-h1">总览</h1>' in body
     assert "/api/overview" in body
 
 

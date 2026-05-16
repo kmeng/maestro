@@ -9,7 +9,7 @@ def test_wizard_shell_extends_base():
     body = r.text
     # Base
     assert 'class="sidebar"' in body
-    assert 'class="page-h1">Team setup wizard</h1>' in body
+    assert 'class="page-h1">团队组建向导</h1>' in body
     # Step 1 inside the shell
     assert 'data-step="1"' in body
     assert "下一步" in body

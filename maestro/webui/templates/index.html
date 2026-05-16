@@ -1,28 +1,28 @@
 {% extends "_base.html" %}
 {% set nav_active = "overview" %}
-{% block title %}Overview{% endblock %}
+{% block title %}总览{% endblock %}
 {% block content %}
-  <h1 class="page-h1">Overview</h1>
-  <div class="page-sub" id="overview-subtitle">Loading…</div>
+  <h1 class="page-h1">总览</h1>
+  <div class="page-sub" id="overview-subtitle">加载中…</div>
 
   <div class="kpis">
     <div class="kpi">
-      <div class="kpi-label">Dispatches today</div>
+      <div class="kpi-label">今日调度</div>
       <div class="kpi-value" id="kpi-today-dispatches">—</div>
       <div class="kpi-delta" id="kpi-today-delta"></div>
     </div>
     <div class="kpi">
-      <div class="kpi-label">Cumulative savings</div>
+      <div class="kpi-label">累计节省</div>
       <div class="kpi-value"><span id="kpi-cumulative-savings">—</span><span class="kpi-unit">USD</span></div>
       <div class="kpi-delta" id="kpi-cumulative-pct"></div>
     </div>
     <div class="kpi">
-      <div class="kpi-label">Active workers</div>
+      <div class="kpi-label">活动 worker</div>
       <div class="kpi-value" id="kpi-active-workers">—</div>
       <div class="kpi-delta neutral" id="kpi-active-detail"></div>
     </div>
     <div class="kpi">
-      <div class="kpi-label">Open problems</div>
+      <div class="kpi-label">待处理问题</div>
       <div class="kpi-value" id="kpi-open-problems">—</div>
       <div class="kpi-delta neutral" id="kpi-problems-detail"></div>
     </div>
@@ -31,14 +31,14 @@
   <div class="row2">
     <section class="panel">
       <header class="panel-h">
-        <h2 class="panel-title">Dispatches · last 7 days</h2>
+        <h2 class="panel-title">近 7 天调度</h2>
         <div class="panel-meta" id="sparkline-total"></div>
       </header>
       <svg id="sparkline" viewBox="0 0 700 110" preserveAspectRatio="none" style="width:100%; height:110px; display:block;"></svg>
     </section>
     <section class="panel">
       <header class="panel-h">
-        <h2 class="panel-title">Now running</h2>
+        <h2 class="panel-title">当前运行</h2>
         <div class="panel-meta" id="now-running-meta"></div>
       </header>
       <div id="now-running-body"></div>
@@ -47,33 +47,33 @@
 
   <div class="entries">
     <a href="/team" class="entry">
-      <div class="entry-title">Team</div>
-      <div class="entry-desc">Pick the model behind each role — coder, reviewer, scribe, librarian.</div>
+      <div class="entry-title">团队</div>
+      <div class="entry-desc">给每个角色挑一台合适的模型 — coder / reviewer / scribe / librarian。</div>
       <div class="entry-cta" id="entry-team-cta">→</div>
     </a>
     <a href="/scaffold" class="entry">
-      <div class="entry-title">Scaffold</div>
-      <div class="entry-desc">Spin up a fresh project from a vetted template.</div>
+      <div class="entry-title">脚手架</div>
+      <div class="entry-desc">从一组经过验证的模板里起步，几秒拉起骨架。</div>
       <div class="entry-cta">→</div>
     </a>
     <a href="/live" class="entry">
-      <div class="entry-title">Live</div>
-      <div class="entry-desc">Watch a dispatch as it happens — stream tokens, cost, status.</div>
+      <div class="entry-title">实时</div>
+      <div class="entry-desc">实时看 worker 在干什么 — token、耗时、状态。</div>
       <div class="entry-cta" id="entry-live-cta">→</div>
     </a>
     <a href="/history" class="entry">
-      <div class="entry-title">History</div>
-      <div class="entry-desc">Browse past dispatches with cost, duration and verdict.</div>
+      <div class="entry-title">历史</div>
+      <div class="entry-desc">复盘过去调度的成本、耗时、结果。</div>
       <div class="entry-cta" id="entry-history-cta">→</div>
     </a>
     <a href="/savings" class="entry">
-      <div class="entry-title">Savings</div>
-      <div class="entry-desc">How much you saved vs running everything on a flagship model.</div>
+      <div class="entry-title">成本节省</div>
+      <div class="entry-desc">对比"全部用旗舰模型"的成本，看你省了多少。</div>
       <div class="entry-cta" id="entry-savings-cta">→</div>
     </a>
     <a href="/problems" class="entry">
-      <div class="entry-title">Problems</div>
-      <div class="entry-desc">Worker-quality flags, spec drift, dogfooding blockers.</div>
+      <div class="entry-title">问题</div>
+      <div class="entry-desc">Worker 质量问题、spec 偏差、dogfooding 卡点。</div>
       <div class="entry-cta" id="entry-problems-cta">→</div>
     </a>
   </div>
@@ -104,23 +104,23 @@
   try {
     const resp = await fetch('/api/overview');
     if (!resp.ok) {
-      subtitleEl.textContent = 'Failed to load — check server logs';
+      subtitleEl.textContent = '加载失败 — 请查看服务端日志';
       return;
     }
     data = await resp.json();
   } catch (err) {
-    subtitleEl.textContent = 'Failed to load — check server logs';
+    subtitleEl.textContent = '加载失败 — 请查看服务端日志';
     return;
   }
 
   const now = new Date();
-  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const dateStr = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
   let subtitleText = dateStr;
   if (data.telemetry === 'disabled') {
-    subtitleText += ' · telemetry disabled';
+    subtitleText += ' · 遥测已关闭';
   }
   if (data.cumulative.dispatches === 0) {
-    subtitleText = 'First run · ' + subtitleText;
+    subtitleText = '首次运行 · ' + subtitleText;
   }
   subtitleEl.textContent = subtitleText;
 
@@ -128,30 +128,30 @@
 
   const delta = data.today.delta_dispatches_vs_yesterday;
   if (delta > 0) {
-    kpiTodayDelta.textContent = `↑ ${delta} vs yesterday`;
+    kpiTodayDelta.textContent = `↑ ${delta} 较昨日`;
     kpiTodayDelta.className = 'kpi-delta up';
   } else if (delta < 0) {
-    kpiTodayDelta.textContent = `↓ ${Math.abs(delta)} vs yesterday`;
+    kpiTodayDelta.textContent = `↓ ${Math.abs(delta)} 较昨日`;
     kpiTodayDelta.className = 'kpi-delta down';
   } else {
-    kpiTodayDelta.textContent = 'no change yesterday';
+    kpiTodayDelta.textContent = '与昨日持平';
     kpiTodayDelta.className = 'kpi-delta neutral';
   }
 
   kpiCumSavings.textContent = data.cumulative.savings_usd.toFixed(2);
   const pct = data.cumulative.savings_pct;
-  kpiCumPct.textContent = `${pct}% off flagship`;
+  kpiCumPct.textContent = `较旗舰省 ${pct}%`;
   kpiCumPct.className = `kpi-delta ${pct > 0 ? 'up' : 'neutral'}`;
 
   kpiActiveWorkers.textContent = data.active_workers;
-  kpiActiveDetail.textContent = data.active_workers > 0 ? 'running' : 'idle';
+  kpiActiveDetail.textContent = data.active_workers > 0 ? '进行中' : '空闲';
 
   const problems = data.open_problems;
   kpiOpenProblems.textContent = problems;
   if (problems > 0) {
     kpiOpenProblems.style.setProperty('color', 'var(--orange)');
   }
-  kpiProblemsDetail.textContent = problems > 0 ? 'see /problems' : 'all clear';
+  kpiProblemsDetail.textContent = problems > 0 ? '见问题面板' : '一切正常';
 
   const sparkData = data.sparkline_7d;
   const counts = sparkData.map(d => d.count);
@@ -203,14 +203,14 @@
   circle.setAttribute('fill', 'var(--accent)');
   sparklineSvg.appendChild(circle);
 
-  sparklineTotal.textContent = `${data.cumulative.dispatches} total`;
+  sparklineTotal.textContent = `共 ${data.cumulative.dispatches} 次`;
 
   if (data.cumulative.dispatches === 0) {
-    nowRunningBody.innerHTML = '<a href="/wizard" class="btn btn-primary">Get started → Set up your team</a>';
+    nowRunningBody.innerHTML = '<a href="/wizard" class="btn btn-primary">开始 → 配置团队</a>';
     nowRunningMeta.textContent = '';
   } else if (data.now_running === null) {
-    nowRunningBody.innerHTML = '<div class="empty-run">No dispatch running.</div>';
-    nowRunningMeta.textContent = 'idle';
+    nowRunningBody.innerHTML = '<div class="empty-run">暂无运行中的调度。</div>';
+    nowRunningMeta.textContent = '空闲';
   } else {
     const run = data.now_running;
     const elapsed = run.elapsed_s;
@@ -218,9 +218,9 @@
     if (elapsed >= 60) {
       const mins = Math.floor(elapsed / 60);
       const secs = elapsed % 60;
-      elapsedStr = `${mins}m ${secs}s`;
+      elapsedStr = `${mins} 分 ${secs} 秒`;
     } else {
-      elapsedStr = `${elapsed}s`;
+      elapsedStr = `${elapsed} 秒`;
     }
     nowRunningMeta.textContent = elapsedStr;
 
@@ -249,12 +249,12 @@
     nowRunningBody.appendChild(container);
   }
 
-  if (entryTeamCTA) entryTeamCTA.textContent = 'Configure →';
-  if (entryLiveCTA) entryLiveCTA.textContent = data.active_workers > 0 ? `${data.active_workers} in flight →` : 'Watch →';
-  if (entryHistoryCTA) entryHistoryCTA.textContent = `${data.cumulative.dispatches} records →`;
-  if (entrySavingsCTA) entrySavingsCTA.textContent = `$${data.cumulative.savings_usd.toFixed(2)} saved →`;
+  if (entryTeamCTA) entryTeamCTA.textContent = '配置 →';
+  if (entryLiveCTA) entryLiveCTA.textContent = data.active_workers > 0 ? `${data.active_workers} 在飞 →` : '查看 →';
+  if (entryHistoryCTA) entryHistoryCTA.textContent = `${data.cumulative.dispatches} 条记录 →`;
+  if (entrySavingsCTA) entrySavingsCTA.textContent = `已省 $${data.cumulative.savings_usd.toFixed(2)} →`;
   if (entryProblemsCTA) {
-    entryProblemsCTA.textContent = `${data.open_problems} open →`;
+    entryProblemsCTA.textContent = `${data.open_problems} 条待处理 →`;
     entryProblemsCTA.style.color = data.open_problems > 0 ? 'var(--orange)' : 'var(--accent)';
   }
 })();

@@ -43,7 +43,7 @@ def test_team_catalog_extends_base(team_root):
     assert r.status_code == 200
     body = r.text
     assert 'class="sidebar"' in body
-    assert 'class="page-h1">Team</h1>' in body
+    assert 'class="page-h1">团队</h1>' in body
     assert 'class="data-table"' in body
     assert "<style>" not in body
     for member in ("cody", "lily", "rae", "sage"):

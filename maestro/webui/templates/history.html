@@ -1,6 +1,6 @@
 {% extends "_base.html" %}
 {% set nav_active = "history" %}
-{% block title %}History{% endblock %}
+{% block title %}调度历史{% endblock %}
 
 {% block extra_head %}
 <!-- Page-specific drill-down styling for the per-row <details> block (not in shared CSS per design doc § 5.3) -->
@@ -14,7 +14,7 @@
 {% endblock %}
 
 {% block content %}
-  <h1 class="page-h1">History</h1>
+  <h1 class="page-h1">调度历史</h1>
   <div class="page-sub">{% if rows %}{{ rows|length }} 次调度，最新在前{% else %}暂无调度记录{% endif %}</div>
 
   {% if rows %}
