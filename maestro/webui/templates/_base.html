@@ -16,7 +16,7 @@
     <div class="brand-sub">v{{ version or '' }} · localhost</div>
     <nav class="nav">
       <a href="/" class="{% if nav_active == 'overview' %}active{% endif %}" {% if nav_active == 'overview' %}aria-current="page"{% endif %}>Overview</a>
-      <a href="/team-catalog" class="{% if nav_active == 'team' %}active{% endif %}" {% if nav_active == 'team' %}aria-current="page"{% endif %}>Team</a>
+      <a href="/team" class="{% if nav_active == 'team' %}active{% endif %}" {% if nav_active == 'team' %}aria-current="page"{% endif %}>Team</a>
       <a href="/scaffold" class="{% if nav_active == 'scaffold' %}active{% endif %}" {% if nav_active == 'scaffold' %}aria-current="page"{% endif %}>Scaffold</a>
       <a href="/live" class="{% if nav_active == 'live' %}active{% endif %}" {% if nav_active == 'live' %}aria-current="page"{% endif %}>Live</a>
       <a href="/history" class="{% if nav_active == 'history' %}active{% endif %}" {% if nav_active == 'history' %}aria-current="page"{% endif %}>History</a>

@@ -34,7 +34,7 @@ def test_base_template_renders_with_minimal_child():
     # all nav links
     for href in [
         "/",
-        "/team-catalog",
+        "/team",
         "/scaffold",
         "/live",
         "/history",
@@ -53,5 +53,5 @@ def test_base_template_marks_active_nav():
     # Find <a> tags carrying aria-current="page" (order-agnostic re. href/class)
     active_tags = re.findall(r'<a[^>]*aria-current="page"[^>]*>', html)
     assert len(active_tags) == 1, f"Expected exactly 1 active link, got {len(active_tags)}: {active_tags}"
-    assert 'href="/team-catalog"' in active_tags[0]
+    assert 'href="/team"' in active_tags[0]
     assert 'class="active"' in active_tags[0]
