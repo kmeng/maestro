@@ -1430,22 +1430,30 @@ async def _reviewer_impl(arguments: dict) -> list[TextContent]:
 # Routine text generation — flash-tier model is sufficient.
 # ============================================================
 
-SCRIBE_SYSTEM_PROMPT = """You are a scribe on an AI software team. Your job is to write commit messages
-and PR bodies that follow the project's conventions exactly.
+SCRIBE_SYSTEM_PROMPT = """You are a scribe on an AI software team. Your job is to draft
+prose explaining a code change: commit messages, PR descriptions, release notes,
+or changelog entries. You return STRICT JSON matching the contract below.
 
-You return STRICT JSON matching the contract below.
+The caller provides:
+- `diff`: a code diff (the WHAT).
+- `purpose`: free-form text describing why this change exists (the WHY).
+- `style`: one of {"commit message", "PR description", "release note",
+  "changelog entry"}. Defaults to "commit message" if absent.
+- `audience_context` (optional): free-form notes about audience, project
+  conventions (Conventional Commits prefix rules, co-author attribution
+  format, Closes/Refs placement, etc.), or anything else that shapes the
+  output. Treat as authoritative when present.
 
 Strict rules:
-- Subject line under 80 chars; use Conventional Commits prefix
-  (feat / fix / docs / refactor / test / chore / etc).
-- Body explains the WHY (motivation, decision), not the WHAT (the diff itself
-  shows the WHAT).
-- Include `Closes #N.` on its own line if the convention says so. Otherwise use
-  `Refs #N.` per the convention text.
-- Include co-author lines per the convention.
-- Do NOT invent details not present in the diff or issue.
-- If the diff is large or ambiguous, flag in `concerns` rather than overstating
-  what changed.
+- Explain the WHY (from `purpose`), not the WHAT (the diff shows that).
+- Subject lines under 80 chars when applicable.
+- If `audience_context` specifies a convention (Conventional Commits prefix,
+  co-author lines, Closes/Refs format), follow it exactly. If absent, default
+  to Conventional Commits prefix (feat / fix / docs / refactor / test / chore)
+  and no co-author lines.
+- Do NOT invent details not present in the diff or purpose.
+- If the diff is large or ambiguous, flag in `concerns` rather than
+  overstating what changed.
 
 Return JSON of exactly this shape:
 {
@@ -1454,57 +1462,85 @@ Return JSON of exactly this shape:
   "pr_body": "...",
   "concerns": ["..."]
 }
-- `commit_message`: full subject + body, including any co-author lines.
-- `pr_title`: under 70 chars per Maestro convention.
-- `pr_body`: Markdown, following the project's PR body convention from the
-  `convention` field of the input.
+
+Per-style output semantics:
+- "commit message" (default): `commit_message` is the full message
+  (subject + body + co-authors). `pr_title` and `pr_body` are empty strings.
+- "PR description": `commit_message` is a headline summary (one line).
+  `pr_title` is the PR title (under 70 chars). `pr_body` is the full
+  Markdown body following the audience_context PR conventions.
+- "release note": `commit_message` carries the release note text.
+  `pr_title` and `pr_body` are empty strings.
+- "changelog entry": `commit_message` carries the changelog entry text.
+  `pr_title` and `pr_body` are empty strings.
+
 Empty `concerns` list is allowed. Do NOT include any text outside the JSON object."""
 
 
 SCRIBE_TOOL = Tool(
     name="scribe",
     description=(
-        "Draft commit messages and PR bodies. USE for: Conventional Commits "
-        "message + PR body from a git diff plus issue context. DO NOT USE for: "
-        "release notes (different scope); code comments; user-facing documentation."
+        "Draft prose explaining a code change. USE for: commit messages, PR "
+        "descriptions, release notes, or changelog entries from a git diff "
+        "plus a free-form purpose. DO NOT USE for: code comments; user-facing "
+        "documentation (long-form); inline source-level explanation."
     ),
     inputSchema={
         "type": "object",
         "properties": {
             "diff": {
                 "type": "string",
-                "description": "Output of `git diff` for the change being committed.",
+                "description": "Output of `git diff` for the change being explained.",
             },
-            "issue_number": {
-                "type": "integer",
-                "description": "Issue number this commit addresses.",
-            },
-            "issue_title": {
-                "type": "string",
-                "description": "Title of the issue being addressed.",
-            },
-            "issue_body": {
-                "type": "string",
-                "description": "Body of the issue (for context on scope and acceptance criteria).",
-            },
-            "convention": {
+            "purpose": {
                 "type": "string",
                 "description": (
-                    "Project's commit message and PR body conventions. Include "
-                    "Conventional Commits prefix rules, co-author attribution "
-                    "format, and Closes/Refs placement rules."
+                    "Free-form: what is this change for? Why does it exist? "
+                    "Becomes the WHY of the output (commit body / PR description / "
+                    "release note narrative). If the change addresses a tracked "
+                    "issue or ticket, mention it here (e.g., 'Issue #42: ...' or "
+                    "'Linear MAE-123: ...') — scribe will preserve the reference."
+                ),
+            },
+            "style": {
+                "type": "string",
+                "enum": ["commit message", "PR description", "release note", "changelog entry"],
+                "description": (
+                    "Output style. Defaults to 'commit message' if absent. "
+                    "Choose based on the deliverable: 'commit message' for git "
+                    "commit; 'PR description' when callers will use the pr_title "
+                    "+ pr_body output fields; 'release note' or 'changelog entry' "
+                    "for release-time prose."
+                ),
+            },
+            "audience_context": {
+                "type": "string",
+                "description": (
+                    "Optional free-form context that shapes the output. Use to "
+                    "specify project conventions (Conventional Commits prefix "
+                    "rules, co-author attribution format, Closes/Refs placement), "
+                    "audience notes (internal team vs external users), or anything "
+                    "else that constrains tone or format. Authoritative when present."
                 ),
             },
             "task_id": {
                 "type": "string",
                 "description": (
                     "Optional task identifier (e.g., 'T6.8') for dispatch "
-                    "telemetry attribution. See ADR-0011. (issue_number "
-                    "above doubles as attribution issue.)"
+                    "telemetry attribution. See ADR-0011."
+                ),
+            },
+            "issue_number": {
+                "type": "integer",
+                "description": (
+                    "Optional issue number (e.g., 64) for dispatch telemetry "
+                    "attribution. See ADR-0011. Note: this is telemetry-only; "
+                    "to have scribe reference the issue in output prose, include "
+                    "it in the `purpose` field."
                 ),
             },
         },
-        "required": ["diff", "issue_number", "issue_title", "issue_body", "convention"],
+        "required": ["diff", "purpose"],
     },
 )
 
@@ -1522,10 +1558,14 @@ def _validate_scribe_output(data: Any) -> Optional[str]:
         if key not in data:
             return f"missing key: {key}"
 
-    for key in ("commit_message", "pr_title"):
-        if not isinstance(data[key], str) or not data[key]:
-            return f"{key} is not a non-empty string"
+    # T8.8: commit_message is the only field that must be non-empty (it carries
+    # the primary output regardless of style). pr_title / pr_body may be empty
+    # strings when style is "commit message" / "release note" / "changelog entry".
+    if not isinstance(data["commit_message"], str) or not data["commit_message"]:
+        return "commit_message is not a non-empty string"
 
+    if not isinstance(data["pr_title"], str):
+        return "pr_title is not a string"
     if not isinstance(data["pr_body"], str):
         return "pr_body is not a string"
 
@@ -1548,36 +1588,42 @@ async def scribe_handler(arguments: dict) -> list[TextContent]:
 
 
 async def _scribe_impl(arguments: dict) -> list[TextContent]:
-    """Draft a commit message and PR body from a diff + issue context.
+    """Draft prose (commit message / PR description / release note /
+    changelog entry) from a diff + purpose + optional style/audience context.
 
-    Thin wrapper over dispatcher.run."""
+    Thin wrapper over dispatcher.run. T8.8 redesign: input schema is
+    workflow-generic (no GitHub-issue concepts in required fields);
+    issue_number is retained as optional telemetry only per ADR-0011."""
+    _ALLOWED_STYLES = ("commit message", "PR description", "release note", "changelog entry")
+
     diff = arguments.get("diff", "").strip()
-    issue_number = arguments.get("issue_number")
-    issue_title = arguments.get("issue_title", "").strip()
-    issue_body = arguments.get("issue_body", "").strip()
-    convention = arguments.get("convention", "").strip()
+    purpose = arguments.get("purpose", "").strip()
+    style = arguments.get("style", "commit message")
+    audience_context = arguments.get("audience_context", "").strip()
 
     if not diff:
         return _error_response("input_validation", "diff is required and must be non-empty")
-    if not isinstance(issue_number, int):
-        return _error_response("input_validation", "issue_number must be an integer")
-    if not issue_title:
-        return _error_response("input_validation", "issue_title is required")
-    if not convention:
-        return _error_response("input_validation", "convention is required")
-    # issue_body may be empty — some issues are very terse; we don't require it.
+    if not purpose:
+        return _error_response("input_validation", "purpose is required and must be non-empty")
+    if not isinstance(style, str) or style not in _ALLOWED_STYLES:
+        return _error_response(
+            "input_validation",
+            f"style must be one of {_ALLOWED_STYLES}; got {style!r}",
+        )
 
-    # T6.8 attribution: scribe reuses the existing required `issue_number`
-    # for attribution; only `task_id` is a new optional field (ADR-0011).
+    # T6.8 attribution fields (optional; ADR-0011). issue_number is now
+    # telemetry-only — no longer required. task_id likewise optional.
     attribution_task_id = arguments.get("task_id")
     if attribution_task_id is not None and not isinstance(attribution_task_id, str):
         return _error_response("input_validation", "task_id must be a string")
-    attribution_issue_number = issue_number  # already validated above
+    attribution_issue_number = arguments.get("issue_number")
+    if attribution_issue_number is not None and not isinstance(attribution_issue_number, int):
+        return _error_response("input_validation", "issue_number must be an integer")
 
     user_prompt = (
-        f"Issue #{issue_number}: {issue_title}\n\n"
-        f"Issue body:\n{issue_body}\n\n"
-        f"Project conventions:\n{convention}\n\n"
+        f"Purpose:\n{purpose}\n\n"
+        f"Style: {style}\n\n"
+        f"Audience context:\n{audience_context if audience_context else '(none provided — use defaults)'}\n\n"
         f"Diff:\n{diff}"
     )
 

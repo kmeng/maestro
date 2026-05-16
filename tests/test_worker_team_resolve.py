@@ -171,10 +171,7 @@ def test_resolve_or_refuse_invalid_returns_text_content_list(server, monkeypatch
             "_scribe_impl",
             {
                 "diff": "some diff",
-                "issue_number": 1,
-                "issue_title": "t",
-                "issue_body": "b",
-                "convention": "c",
+                "purpose": "Issue #1 (t): b",
             },
         ),
     ],

@@ -155,10 +155,7 @@ def test_coder_emits_banner_at_start_of_plaintext(server, monkeypatch):
             _valid_scribe_output,
             {
                 "diff": "+x",
-                "issue_number": 1,
-                "issue_title": "t",
-                "issue_body": "b",
-                "convention": "c",
+                "purpose": "Issue #1 (t): b",
             },
         ),
     ],
