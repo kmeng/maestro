@@ -85,13 +85,14 @@ def test_savings_happy_path_renders_200(client, tmp_path, monkeypatch):
     resp = client.get("/savings")
     assert resp.status_code == 200
     body = resp.text
-    # Title + section headers
-    assert "Dispatch Savings" in body
+    # Title + section headers (redesigned page T9.9 uses "Savings" h1 only)
+    assert ">Savings</h1>" in body
     assert "Per-role" in body
     assert "Per-time" in body
-    # Headline reflects 3 dispatches across the 2-day range
-    assert "<strong>3</strong>" in body
-    assert "dispatches" in body
+    # Headline reflects 3 dispatches across the 2-day range (new design renders
+    # the count inside a .kpi-value div rather than the legacy <strong>).
+    assert ">3<" in body
+    assert "dispatch" in body
     assert "2026-05-10" in body
     assert "2026-05-11" in body
     # Footer shows path + telemetry-enabled
@@ -175,7 +176,8 @@ def test_savings_error_renders_diagnostic(client, tmp_path, monkeypatch):
     resp = client.get("/savings")
     assert resp.status_code == 200
     body = resp.text
-    assert "Could not read the dispatch log" in body
+    # Redesigned error template (T9.9) uses Chinese title "无法读取 dispatch 日志".
+    assert "无法读取 dispatch 日志" in body or "Could not read the dispatch log" in body
     assert str(bad_path) in body
     # Some form of the underlying exception text should appear in the <pre> block
     assert "directory" in body.lower() or "errno" in body.lower()
@@ -196,7 +198,7 @@ def test_savings_malformed_rows_footnote(client, tmp_path, monkeypatch):
     assert resp.status_code == 200
     body = resp.text
     # Happy template still rendered (the 1 valid row produces real content)
-    assert "Dispatch Savings" in body
+    assert ">Savings</h1>" in body
     assert "Per-role" in body
     # Footnote with the skipped count (2 = JSON-decode + bad-started_at)
     assert "2 malformed rows skipped" in body

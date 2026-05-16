@@ -1,28 +1,14 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Maestro · Dispatch Savings</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 720px; margin: 4em auto; padding: 0 1em; color: #222; }
-    h1 { margin-bottom: 0.25em; }
-    .banner { background: #f6f8fa; border-left: 4px solid #2074d4; padding: 1em 1.25em; border-radius: 4px; margin: 2em 0; line-height: 1.55; }
-    .banner h2 { margin: 0 0 0.5em 0; font-size: 1.05em; color: #2074d4; }
-    .banner p { margin: 0.5em 0; }
-    code { background: #fff; padding: 0.1em 0.4em; border-radius: 3px; font-size: 0.95em; }
-  </style>
-</head>
-<body>
-  <h1>Dispatch Savings</h1>
-  <div class="banner">
-    <h2>No dispatches recorded yet</h2>
-    <p>
-      Dispatch any worker (coder / librarian / reviewer / scribe) via the
-      Maestro MCP server, then refresh this page.
-    </p>
-    <p>
-      Expected log location: <code>{{ log_path }}</code>
-    </p>
+{% extends "_base.html" %}
+{% set nav_active = "savings" %}
+{% block title %}Savings{% endblock %}
+{% block content %}
+  <h1 class="page-h1">Savings</h1>
+  <div class="empty-state">
+    <div class="empty-icon">$</div>
+    <div class="empty-title">No dispatches recorded yet</div>
+    <div class="empty-body">
+      Dispatch any worker (coder / librarian / reviewer / scribe) via the Maestro MCP server, then refresh this page.<br><br>
+      Expected log location: <span class="mono">{{ log_path }}</span>
+    </div>
   </div>
-</body>
-</html>
+{% endblock %}
