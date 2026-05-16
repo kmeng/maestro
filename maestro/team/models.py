@@ -11,8 +11,16 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 ROLE_IDS: tuple[str, ...] = ("coder", "librarian", "reviewer", "scribe")
 
+# Shipped infrastructure tools — dispatched like roles, but not user-
+# configurable via team.yaml. No team member is assigned; the MCP server
+# uses DEFAULT_MODELS for these directly. T8.3 will add "spec-writer".
+SHIPPED_TOOL_IDS: tuple[str, ...] = ("verifier",)
+
 # DEFAULT_MODELS sourced from Epic 5's worker fleet design (docs/design/52-...).
-# Wizard pre-fills these; MCP server uses them when team.yaml is absent.
+# For ROLE_IDS entries, the wizard pre-fills these and the MCP server uses
+# them when team.yaml is absent. For SHIPPED_TOOL_IDS entries (verifier
+# and future), the MCP server always uses these — team.yaml does not
+# configure them.
 # Typed as dict[str, str] (not dict[RoleId, str]) for ergonomic use without
 # importing the Literal alias at every call site.
 DEFAULT_MODELS: dict[str, str] = {
@@ -20,9 +28,10 @@ DEFAULT_MODELS: dict[str, str] = {
     "librarian": "deepseek-v4-flash",
     "reviewer": "deepseek-v4-pro",
     "scribe": "deepseek-v4-flash",
+    "verifier": "deepseek-v4-flash",
 }
 
-RoleId = Literal["coder", "librarian", "reviewer", "scribe"]
+RoleId = Literal["coder", "librarian", "reviewer", "scribe", "verifier"]
 
 
 class RoleEntry(BaseModel):
