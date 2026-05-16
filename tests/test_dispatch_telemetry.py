@@ -169,10 +169,7 @@ def test_disabled_when_env_var_empty(server, monkeypatch, tmp_path):
 
     result = asyncio.run(server._scribe_impl({
         "diff": "+x",
-        "issue_number": 1,
-        "issue_title": "t",
-        "issue_body": "b",
-        "convention": "c",
+        "purpose": "Issue #1 (t): b",
     }))
     assert len(result) == 1
     assert not (tmp_path / "dispatch-log.jsonl").exists()
@@ -396,17 +393,15 @@ def test_branch_re_patterns(server):
     assert server._BRANCH_RE.match("v0.0.3") is None
 
 
-def test_scribe_attribution_uses_existing_issue_number(server, monkeypatch, tmp_path):
-    """Scribe's required issue_number doubles as attribution; no extra param needed."""
+def test_scribe_attribution_uses_optional_issue_number_and_task_id(server, monkeypatch, tmp_path):
+    """T8.8: issue_number is now optional telemetry; passing it still attributes."""
     mock = AsyncMock(return_value=_mock_resp(_valid_scribe_json(), total_tokens=1))
     monkeypatch.setattr(server.deepseek.chat.completions, "create", mock)
 
     asyncio.run(server._scribe_impl({
         "diff": "+x",
+        "purpose": "Issue #64 (t): b",
         "issue_number": 64,
-        "issue_title": "t",
-        "issue_body": "b",
-        "convention": "c",
         "task_id": "T6.8",
     }))
 

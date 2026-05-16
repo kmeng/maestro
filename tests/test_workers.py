@@ -672,13 +672,18 @@ def test_reviewer_returns_error_when_output_schema_invalid(server, monkeypatch):
 
 
 def test_scribe_tool_required_fields(server):
-    assert set(server.SCRIBE_TOOL.inputSchema["required"]) == {
-        "diff",
-        "issue_number",
-        "issue_title",
-        "issue_body",
-        "convention",
-    }
+    """T8.8: schema requires only generic primitives; issue_* fields removed."""
+    assert set(server.SCRIBE_TOOL.inputSchema["required"]) == {"diff", "purpose"}
+    # The optional, workflow-agnostic properties are still present:
+    props = server.SCRIBE_TOOL.inputSchema["properties"]
+    assert "style" in props
+    assert "audience_context" in props
+    assert "task_id" in props
+    assert "issue_number" in props  # retained as optional telemetry only
+    # Removed GitHub-issue-flavored required fields:
+    assert "issue_title" not in props
+    assert "issue_body" not in props
+    assert "convention" not in props
 
 
 def test_validate_scribe_accepts_valid(server):
@@ -704,28 +709,66 @@ def test_validate_scribe_rejects_non_string_pr_body(server):
 
 
 def test_scribe_rejects_missing_diff(server):
-    result = asyncio.run(server._scribe_impl({
-        "issue_number": 1,
-        "issue_title": "x",
-        "issue_body": "y",
-        "convention": "z",
-    }))
+    result = asyncio.run(server._scribe_impl({"purpose": "add Y"}))
     err = _parse_error(result)
     assert err["error"] == "input_validation"
     assert "diff" in err["message"]
 
 
-def test_scribe_rejects_non_integer_issue_number(server):
+def test_scribe_rejects_missing_purpose(server):
+    """T8.8: purpose is required."""
+    result = asyncio.run(server._scribe_impl({"diff": "+ added Y"}))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "purpose" in err["message"]
+
+
+def test_scribe_rejects_non_integer_issue_number_when_present(server):
+    """T8.8: issue_number is optional telemetry; if given, must be int."""
     result = asyncio.run(server._scribe_impl({
         "diff": "x",
+        "purpose": "add Y",
         "issue_number": "1",  # string instead of int
-        "issue_title": "x",
-        "issue_body": "",
-        "convention": "x",
     }))
     err = _parse_error(result)
     assert err["error"] == "input_validation"
     assert "issue_number" in err["message"]
+
+
+def test_scribe_rejects_invalid_style(server):
+    """T8.8: style, if present, must be in the enum."""
+    result = asyncio.run(server._scribe_impl({
+        "diff": "x",
+        "purpose": "add Y",
+        "style": "haiku",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "style" in err["message"]
+
+
+def test_scribe_accepts_minimal_required_only(server, monkeypatch):
+    """T8.8: diff + purpose alone is a valid call; style defaults; optional fields absent."""
+    valid_output = {
+        "commit_message": "feat: add Y\n\nWe need Y.",
+        "pr_title": "",
+        "pr_body": "",
+        "concerns": [],
+    }
+    mock_create = AsyncMock(return_value=_mock_deepseek_response(json.dumps(valid_output)))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    result = asyncio.run(server._scribe_impl({
+        "diff": "+ added Y",
+        "purpose": "We need Y.",
+    }))
+    parsed = json.loads(result[0].text)
+    assert isinstance(parsed.pop("_banner"), str)
+    assert parsed == valid_output
+    # Default style should appear in the user prompt:
+    user_msg = mock_create.call_args.kwargs["messages"][1]["content"]
+    assert "Style: commit message" in user_msg
+    assert "(none provided" in user_msg  # audience_context absent path
 
 
 def test_scribe_happy_path_uses_flash(server, monkeypatch):
@@ -741,15 +784,56 @@ def test_scribe_happy_path_uses_flash(server, monkeypatch):
 
     result = asyncio.run(server._scribe_impl({
         "diff": "+ added Y",
-        "issue_number": 1,
-        "issue_title": "Add Y",
-        "issue_body": "We need Y.",
-        "convention": "Conventional Commits.",
+        "purpose": "Issue #1: Add Y — we need Y.",
+        "style": "PR description",
+        "audience_context": "Conventional Commits.",
     }))
     parsed = json.loads(result[0].text)
     assert isinstance(parsed.pop("_banner"), str)
     assert parsed == valid_output
     assert mock_create.call_args.kwargs["model"] == server.MODEL_FLASH
+    # Verify the new schema fields reach the model
+    user_msg = mock_create.call_args.kwargs["messages"][1]["content"]
+    assert "Purpose:" in user_msg
+    assert "Style: PR description" in user_msg
+    assert "Conventional Commits." in user_msg
+
+
+def test_scribe_migration_old_github_issue_workflow_still_works(server, monkeypatch):
+    """T8.8 conversion test: callers migrating from the old schema can
+    fold their issue_number/issue_title/issue_body/convention into the
+    new `purpose` + `audience_context` fields and get equivalent output.
+
+    Per feedback_migration_needs_conversion_test."""
+    valid_output = {
+        "commit_message": "feat: add Y\n\nIssue #42: Add Y.",
+        "pr_title": "Add Y",
+        "pr_body": "## Summary\n\nAdds Y.\n\nCloses #42.",
+        "concerns": [],
+    }
+    mock_create = AsyncMock(return_value=_mock_deepseek_response(json.dumps(valid_output)))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    # Caller folds old issue_* and convention into new fields:
+    old_issue_number = 42
+    old_issue_title = "Add Y"
+    old_issue_body = "We need Y because Z."
+    old_convention = "Conventional Commits; co-author lines required."
+
+    result = asyncio.run(server._scribe_impl({
+        "diff": "+ added Y",
+        "purpose": f"Issue #{old_issue_number}: {old_issue_title}\n\n{old_issue_body}",
+        "style": "PR description",
+        "audience_context": old_convention,
+        "issue_number": old_issue_number,  # telemetry only now
+    }))
+    parsed = json.loads(result[0].text)
+    assert parsed["commit_message"] == valid_output["commit_message"]
+    assert parsed["pr_title"] == valid_output["pr_title"]
+    # Verify telemetry attribution still works via the optional issue_number field
+    user_msg = mock_create.call_args.kwargs["messages"][1]["content"]
+    assert "Issue #42" in user_msg  # appears in purpose
+    assert "Conventional Commits" in user_msg  # appears in audience_context
 
 
 # ============================================================
@@ -1130,10 +1214,7 @@ def test_scribe_v0_0_2_env_only_fallback_path(server, monkeypatch, tmp_path):
 
     result = asyncio.run(server._scribe_impl({
         "diff": "some diff",
-        "issue_number": 1,
-        "issue_title": "t",
-        "issue_body": "b",
-        "convention": "c",
+        "purpose": "Issue #1 (t): b",
     }))
 
     assert len(result) == 1
@@ -1336,8 +1417,7 @@ def test_scribe_broken_team_yaml_refuses(server, monkeypatch, tmp_path):
     monkeypatch.setattr("maestro.dispatcher.Path.cwd", lambda: tmp_path)
 
     result = asyncio.run(server._scribe_impl({
-        "diff": "some diff", "issue_number": 1, "issue_title": "t",
-        "issue_body": "b", "convention": "c",
+        "diff": "some diff", "purpose": "Issue #1 (t): b",
     }))
 
     assert mock_create.call_count == 0
