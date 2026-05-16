@@ -115,3 +115,37 @@ def test_resolve_valid_does_not_emit_event(tmp_path: Path):
     result = resolve_role_model("reviewer", tmp_path)
     assert isinstance(result, ResolveOk)
     assert result.event is None
+
+
+# T8.2 — shipped-tool bypass (verifier)
+
+
+def test_resolve_role_model_accepts_verifier_returns_default_model(tmp_path: Path):
+    """Shipped tools bypass team.yaml; resolver returns DEFAULT_MODELS directly."""
+    result = resolve_role_model("verifier", tmp_path)
+    assert isinstance(result, ResolveOk)
+    assert result.model == DEFAULT_MODELS["verifier"]
+    assert result.event is None
+
+
+def test_resolve_role_model_verifier_works_without_team_yaml(tmp_path: Path):
+    """Verifier path is independent of team.yaml presence — no .maestro dir needed."""
+    # tmp_path is empty; no .maestro/team.yaml exists
+    result = resolve_role_model("verifier", tmp_path)
+    assert isinstance(result, ResolveOk)
+    assert result.model == "deepseek-v4-flash"
+
+
+def test_resolve_role_model_verifier_ignores_team_yaml_even_if_present(tmp_path: Path):
+    """Even if team.yaml has all 4 user roles, verifier still bypasses it."""
+    _save_valid_config(tmp_path)
+    result = resolve_role_model("verifier", tmp_path)
+    assert isinstance(result, ResolveOk)
+    assert result.model == DEFAULT_MODELS["verifier"]
+    assert result.event is None
+
+
+def test_resolve_role_model_rejects_unknown_role(tmp_path: Path):
+    """A role in neither ROLE_IDS nor SHIPPED_TOOL_IDS is a caller bug."""
+    with pytest.raises(ValueError, match="unknown role_id"):
+        resolve_role_model("nonsense", tmp_path)

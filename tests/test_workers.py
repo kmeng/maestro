@@ -44,10 +44,11 @@ def server():
 # ============================================================
 
 
-def test_tools_registry_contains_four_roles_plus_job_status(server):
-    """Four worker roles plus the job_status infrastructure tool (ADR-0009)."""
+def test_tools_registry_contains_five_roles_plus_job_status(server):
+    """Five worker roles (T8.2 adds verifier) plus the job_status
+    infrastructure tool (ADR-0009)."""
     assert set(server.TOOLS_REGISTRY.keys()) == {
-        "coder", "librarian", "reviewer", "scribe", "job_status",
+        "coder", "librarian", "reviewer", "scribe", "verifier", "job_status",
     }
 
 
@@ -1149,6 +1150,163 @@ def test_scribe_v0_0_2_env_only_fallback_path(server, monkeypatch, tmp_path):
     assert events[0].role == "scribe"
     assert events[1].event_type == "dispatch.start"
     assert events[2].event_type == "dispatch.end"
+
+
+# ============================================================
+# Verifier — tool registration + input validation + happy path (T8.2)
+# ============================================================
+
+
+def test_verifier_tool_required_fields(server):
+    """Schema requires `claims`; source is XOR-handled at handler level."""
+    schema = server.VERIFIER_TOOL.inputSchema
+    assert schema["required"] == ["claims"]
+    assert "file_paths" in schema["properties"]
+    assert "document_text" in schema["properties"]
+    assert "task_id" not in schema["required"]
+    assert "issue_number" not in schema["required"]
+
+
+def test_verifier_rejects_empty_claims(server):
+    result = asyncio.run(server._verifier_impl({"document_text": "x"}))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "claims" in err["message"]
+
+
+def test_verifier_rejects_claims_with_non_string_entry(server):
+    result = asyncio.run(
+        server._verifier_impl(
+            {"claims": ["valid claim", 42], "document_text": "x"}
+        )
+    )
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+
+
+def test_verifier_rejects_when_neither_source_provided(server):
+    result = asyncio.run(server._verifier_impl({"claims": ["claim"]}))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "exactly one" in err["message"]
+
+
+def test_verifier_rejects_when_both_sources_provided(server, tmp_path):
+    f = tmp_path / "doc.md"
+    f.write_text("hello", encoding="utf-8")
+    result = asyncio.run(
+        server._verifier_impl(
+            {"claims": ["claim"], "file_paths": [str(f)], "document_text": "hi"}
+        )
+    )
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+
+
+def test_verifier_happy_path_with_file_paths(server, monkeypatch, tmp_path):
+    """Multi-file source + 3 claims roundtrip; verify output shape + tool name."""
+    a = tmp_path / "a.md"
+    b = tmp_path / "b.md"
+    a.write_text("alpha", encoding="utf-8")
+    b.write_text("beta", encoding="utf-8")
+
+    valid_output = {
+        "verifications": [
+            {"claim": "alpha is in a", "status": "verified",
+             "actual": "a contains 'alpha'", "evidence": "a.md: alpha"},
+            {"claim": "gamma is in b", "status": "incorrect",
+             "actual": "b contains 'beta', not 'gamma'", "evidence": "b.md: beta"},
+            {"claim": "delta is somewhere", "status": "ambiguous",
+             "actual": "neither file mentions delta", "evidence": "(no match)"},
+        ],
+        "concerns": [],
+    }
+    mock_create = AsyncMock(
+        return_value=_mock_deepseek_response(json.dumps(valid_output))
+    )
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    result = asyncio.run(
+        server._verifier_impl({
+            "claims": ["alpha is in a", "gamma is in b", "delta is somewhere"],
+            "file_paths": [str(a), str(b)],
+        })
+    )
+    assert len(result) == 1
+    parsed = json.loads(result[0].text)
+    assert "_banner" in parsed
+    assert "verifier" in parsed["_banner"]
+    assert len(parsed["verifications"]) == 3
+    statuses = {v["status"] for v in parsed["verifications"]}
+    assert statuses == {"verified", "incorrect", "ambiguous"}
+
+    user_msg = mock_create.call_args.kwargs["messages"][1]["content"]
+    assert f"=== FILE: {a} ===" in user_msg
+    assert f"=== FILE: {b} ===" in user_msg
+    assert "Claims:" in user_msg
+
+
+def test_verifier_returns_error_when_status_is_invalid(server, monkeypatch):
+    """Output validator rejects status outside the allowed enum."""
+    bad_output = {
+        "verifications": [
+            {"claim": "x", "status": "uncertain", "actual": "y", "evidence": "z"},
+        ],
+        "concerns": [],
+    }
+    mock_create = AsyncMock(
+        return_value=_mock_deepseek_response(json.dumps(bad_output))
+    )
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+    result = asyncio.run(
+        server._verifier_impl({"claims": ["x"], "document_text": "src"})
+    )
+    err = _parse_error(result)
+    assert err["error"] == "output_schema_invalid"
+
+
+def test_verifier_returns_error_on_oversize_document(server):
+    huge = "x" * 100_000
+    result = asyncio.run(
+        server._verifier_impl({"claims": ["c"], "document_text": huge})
+    )
+    err = _parse_error(result)
+    assert err["error"] == "document_too_large"
+
+
+def test_verifier_returns_error_when_model_response_is_not_json(server, monkeypatch):
+    mock_create = AsyncMock(return_value=_mock_deepseek_response("not valid json {{{"))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+    result = asyncio.run(
+        server._verifier_impl({"claims": ["x"], "document_text": "src"})
+    )
+    err = _parse_error(result)
+    assert err["error"] == "output_not_json"
+
+
+def test_validate_verifier_output_accepts_valid_shape(server):
+    valid = {
+        "verifications": [
+            {"claim": "c", "status": "verified", "actual": "a", "evidence": "e"},
+        ],
+        "concerns": [],
+    }
+    assert server._validate_verifier_output(valid) is None
+
+
+def test_validate_verifier_output_rejects_missing_verifications(server):
+    assert "missing key: verifications" in server._validate_verifier_output({})
+
+
+def test_validate_verifier_output_rejects_bad_status(server):
+    bad = {
+        "verifications": [
+            {"claim": "c", "status": "maybe", "actual": "a", "evidence": "e"},
+        ],
+        "concerns": [],
+    }
+    err = server._validate_verifier_output(bad)
+    assert "status" in err and "maybe" in err
 
 
 def test_scribe_broken_team_yaml_refuses(server, monkeypatch, tmp_path):

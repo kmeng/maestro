@@ -1657,6 +1657,335 @@ async def _scribe_impl(arguments: dict) -> list[TextContent]:
 
 
 # ============================================================
+# Role: verifier (T8.2)
+#
+# Verify natural-language claims against source documents. Returns
+# per-claim {status: verified|incorrect|ambiguous, actual, evidence}.
+# Shipped infrastructure tool (not in team.yaml; uses DEFAULT_MODELS).
+# ============================================================
+
+VERIFIER_SYSTEM_PROMPT = """You are a verifier on an AI software team. The caller
+gives you a list of natural-language CLAIMS and one or more SOURCE documents.
+Your job is to judge each claim against the sources, claim by claim, and return
+STRICT JSON matching the contract below.
+
+For each claim, decide one of three statuses:
+
+- `verified` — the sources clearly support the claim. `evidence` is a verbatim
+  quote (or a precise location like "file:line range") from the source that
+  shows it.
+- `incorrect` — the sources clearly contradict the claim. `evidence` is the
+  quote that shows the actual state; `actual` describes what the source
+  actually says.
+- `ambiguous` — the sources do not contain enough information to decide either
+  way, OR they are mixed / contradictory between sections. `actual` describes
+  what's there; `evidence` cites the closest relevant passage.
+
+Rules:
+
+- Do NOT invent evidence. If you cannot find a quote, the claim is `ambiguous`.
+- Do NOT extrapolate. "The pattern suggests X" is not the same as "the source
+  says X" — the former is `ambiguous`.
+- Quote evidence verbatim. The caller may run a verifier on YOUR output later;
+  paraphrased evidence is treated as fabricated.
+- One claim → one verification object. Do not collapse multiple claims into one
+  judgment even if related.
+- Preserve the original `claim` text verbatim in each verification entry.
+
+Multi-file input is delimited with `=== FILE: <path> ===` headers. When citing
+evidence from multi-file input, prefix the file path in your `evidence` field
+(e.g., `"maestro/team/models.py: ROLE_IDS = ..."`).
+
+Return JSON of exactly this shape:
+{
+  "verifications": [
+    {
+      "claim": "...",
+      "status": "verified" | "incorrect" | "ambiguous",
+      "actual": "...",
+      "evidence": "..."
+    }
+  ],
+  "concerns": ["..."]
+}
+
+`concerns` is for meta-issues with the input: claims that were vague, sources
+that were truncated, formatting problems. Empty list is allowed.
+
+Do NOT include any text outside the JSON object."""
+
+
+VERIFIER_TOOL = Tool(
+    name="verifier",
+    description=(
+        "Verify natural-language claims against source documents. USE for: "
+        "fact-checking assumptions before generating downstream code; auditing "
+        "claims a spec makes about upstream behavior; validating that a "
+        "summary correctly reflects a long document. Returns per-claim "
+        "{status: verified|incorrect|ambiguous, actual, evidence}. DO NOT USE "
+        "for: free-form Q&A about documents (use librarian instead); judging "
+        "code quality (use reviewer); writing prose (use scribe)."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "claims": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "List of natural-language claims to verify against the "
+                    "sources. Each claim is judged independently. Example: "
+                    "['function X raises ValueError on missing file', 'the "
+                    "constant Y is 42']."
+                ),
+            },
+            "file_paths": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Optional list of absolute or repo-relative paths to source "
+                    "documents. Worker reads each file and uses them as the "
+                    "verification basis. Mutually exclusive with document_text "
+                    "— exactly one of the two must be provided."
+                ),
+            },
+            "document_text": {
+                "type": "string",
+                "description": (
+                    "Inline source text. Use only when source is not a file "
+                    "(e.g., remote API response). Mutually exclusive with "
+                    "file_paths."
+                ),
+            },
+            "task_id": {
+                "type": "string",
+                "description": (
+                    "Optional task identifier (e.g., 'T6.8') for dispatch "
+                    "telemetry attribution. See ADR-0011."
+                ),
+            },
+            "issue_number": {
+                "type": "integer",
+                "description": (
+                    "Optional issue number (e.g., 64) for dispatch telemetry "
+                    "attribution. See ADR-0011."
+                ),
+            },
+        },
+        "required": ["claims"],
+    },
+)
+
+
+def _validate_verifier_output(data: Any) -> Optional[str]:
+    """Verify the parsed JSON output matches the verifier contract.
+
+    Returns None on success, or a short string explaining the violation.
+    Extra fields are ignored (forward compatibility).
+    """
+    if not isinstance(data, dict):
+        return "output is not a dict"
+
+    if "verifications" not in data:
+        return "missing key: verifications"
+    verifications = data["verifications"]
+    if not isinstance(verifications, list):
+        return "verifications is not a list"
+
+    allowed_statuses = ("verified", "incorrect", "ambiguous")
+    for i, item in enumerate(verifications):
+        if not isinstance(item, dict):
+            return f"verifications[{i}] is not a dict"
+        for field in ("claim", "status", "actual", "evidence"):
+            if field not in item:
+                return f"verifications[{i}].{field} is missing"
+            if not isinstance(item[field], str):
+                return f"verifications[{i}].{field} is not a string"
+        if item["status"] not in allowed_statuses:
+            return (
+                f"verifications[{i}].status is {item['status']!r}; "
+                f"must be one of {allowed_statuses}"
+            )
+
+    if "concerns" not in data:
+        return "missing key: concerns"
+    concerns = data["concerns"]
+    if not isinstance(concerns, list):
+        return "concerns is not a list"
+    for i, item in enumerate(concerns):
+        if not isinstance(item, str):
+            return f"concerns[{i}] is not a string"
+
+    return None
+
+
+async def verifier_handler(arguments: dict) -> list[TextContent]:
+    """Enqueue the verifier impl as a background job; return job_id immediately.
+
+    See ADR-0009. Caller polls `job_status(job_id)` until terminal.
+    """
+    return _enqueue_dispatch("verifier", _verifier_impl(arguments))
+
+
+async def _verifier_impl(arguments: dict) -> list[TextContent]:
+    """Verify a list of claims against source documents.
+
+    Thin wrapper over dispatcher.run — lifecycle events flow through the
+    central dispatcher; the handler keeps argument validation, document
+    loading, JSON output validation, cost telemetry (_emit_dispatch_row),
+    and the _banner-embedded JSON output shape."""
+    claims = arguments.get("claims")
+    file_paths = arguments.get("file_paths")
+    document_text = arguments.get("document_text")
+
+    # claims is required and must be a non-empty list of non-empty strings.
+    if not isinstance(claims, list) or not claims or not all(
+        isinstance(c, str) and c.strip() for c in claims
+    ):
+        return _error_response(
+            "input_validation",
+            "claims must be a non-empty list of non-empty strings",
+        )
+
+    # XOR: exactly one of file_paths or document_text must be present.
+    has_paths = bool(file_paths)
+    has_text = bool(document_text)
+    if has_paths == has_text:
+        return _error_response(
+            "input_validation",
+            "exactly one of file_paths or document_text required",
+        )
+
+    if has_paths:
+        if not isinstance(file_paths, list) or not all(
+            isinstance(p, str) and p for p in file_paths
+        ):
+            return _error_response(
+                "input_validation",
+                "file_paths must be a non-empty list of non-empty strings",
+            )
+
+    # T6.8 attribution fields (optional; ADR-0011)
+    attribution_task_id = arguments.get("task_id")
+    if attribution_task_id is not None and not isinstance(attribution_task_id, str):
+        return _error_response("input_validation", "task_id must be a string")
+    attribution_issue_number = arguments.get("issue_number")
+    if attribution_issue_number is not None and not isinstance(attribution_issue_number, int):
+        return _error_response("input_validation", "issue_number must be an integer")
+
+    # Assemble source text. For file_paths: read each, delimit by FILE header.
+    if has_paths:
+        blocks: list[str] = []
+        for p in file_paths:
+            resolved = Path(p)
+            if not resolved.is_absolute():
+                resolved = _PROJECT_ROOT / resolved
+            try:
+                with open(resolved, encoding="utf-8") as f:
+                    content = f.read()
+            except FileNotFoundError:
+                return _error_response(
+                    "file_not_found",
+                    f"file_paths entry not found: {p} (resolved: {resolved})",
+                )
+            except Exception as e:
+                return _error_response(
+                    "file_read_error",
+                    f"{type(e).__name__}: {e} (at {p})",
+                )
+            blocks.append(f"=== FILE: {p} ===\n{content}")
+        source_text = "\n\n".join(blocks)
+    else:
+        source_text = document_text
+
+    if len(source_text) > MAX_DOCUMENT_CHARS:
+        return _error_response(
+            "document_too_large",
+            f"source is {len(source_text)} chars (limit {MAX_DOCUMENT_CHARS}); "
+            "pass a smaller slice via document_text or split the request",
+        )
+
+    captured_model: list[Optional[str]] = [None]
+    captured_usage: dict = {}
+
+    claims_block = "\n".join(f"- {c}" for c in claims)
+    user_prompt = f"Claims:\n{claims_block}\n\nSource:\n{source_text}"
+
+    async def executor(model: str) -> str:
+        captured_model[0] = model
+        resp = await deepseek.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": VERIFIER_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.1,
+        )
+        captured_usage.update({
+            "prompt_tokens": resp.usage.prompt_tokens,
+            "completion_tokens": resp.usage.completion_tokens,
+            "total_tokens": resp.usage.total_tokens,
+        })
+        return resp.choices[0].message.content
+
+    start = time.time()
+    try:
+        result = await dispatcher_run("verifier", user_prompt, executor)
+    except asyncio.TimeoutError:
+        duration = round(time.time() - start, 2)
+        error_msg = "model_timeout"
+        _emit_dispatch_row(
+            task_id=attribution_task_id, issue_number=attribution_issue_number,
+            tool="verifier", model=captured_model[0] or "unknown",
+            model_provider="deepseek", started_at=start, duration=duration,
+            usage=captured_usage or None, error=error_msg,
+        )
+        return _error_response("model_api_error", error_msg)
+    except Exception as e:
+        duration = round(time.time() - start, 2)
+        error_msg = f"model_api_error: {type(e).__name__}: {e}"
+        _emit_dispatch_row(
+            task_id=attribution_task_id, issue_number=attribution_issue_number,
+            tool="verifier", model=captured_model[0] or "unknown",
+            model_provider="deepseek", started_at=start, duration=duration,
+            usage=captured_usage or None, error=error_msg,
+        )
+        return _error_response("model_api_error", error_msg)
+
+    duration = round(time.time() - start, 2)
+
+    if isinstance(result, str) and result.startswith("team.yaml at"):
+        # Defensive: verifier bypasses team.yaml so this shouldn't fire, but
+        # match the librarian/coder pattern for shape uniformity.
+        return [TextContent(type="text", text=result)]
+
+    try:
+        parsed = json.loads(result)
+    except json.JSONDecodeError as e:
+        return _error_response("output_not_json", str(e), raw=result[:500])
+
+    validation_error = _validate_verifier_output(parsed)
+    if validation_error:
+        return _error_response("output_schema_invalid", validation_error, raw=parsed)
+
+    parsed["_banner"] = _build_banner(
+        "verifier", captured_model[0], duration, captured_usage["total_tokens"]
+    )
+
+    _emit_dispatch_row(
+        task_id=attribution_task_id, issue_number=attribution_issue_number,
+        tool="verifier", model=captured_model[0], model_provider="deepseek",
+        started_at=start, duration=duration, usage=captured_usage, error=None,
+    )
+
+    return [TextContent(
+        type="text",
+        text=json.dumps(parsed, ensure_ascii=False, indent=2),
+    )]
+
+
+# ============================================================
 # Tool registry — single source of truth.
 # Adding a new role = one (Tool, handler) entry below.
 # ============================================================
@@ -1668,6 +1997,7 @@ TOOLS_REGISTRY: dict[str, tuple[Tool, ToolHandler]] = {
     LIBRARIAN_TOOL.name: (LIBRARIAN_TOOL, librarian_handler),
     REVIEWER_TOOL.name: (REVIEWER_TOOL, reviewer_handler),
     SCRIBE_TOOL.name: (SCRIBE_TOOL, scribe_handler),
+    VERIFIER_TOOL.name: (VERIFIER_TOOL, verifier_handler),
     JOB_STATUS_TOOL.name: (JOB_STATUS_TOOL, job_status_handler),
 }
 

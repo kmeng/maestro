@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Union
 
 from maestro.team.io import TeamConfigInvalid, load_team_config
-from maestro.team.models import DEFAULT_MODELS, ROLE_IDS
+from maestro.team.models import DEFAULT_MODELS, ROLE_IDS, SHIPPED_TOOL_IDS
 
 
 @dataclass(frozen=True)
@@ -54,12 +54,25 @@ def resolve_role_model(
     """Resolve which model `role_id` should dispatch to, given team.yaml at
     `<project_root>/.maestro/team.yaml`.
 
-    Raises ValueError for unknown role_id (caller bug, not config issue).
+    For role_id in ROLE_IDS, follows the original 3-state logic
+    (valid → configured model; absent → DEFAULT_MODELS fallback;
+    invalid → refuse).
+
+    For role_id in SHIPPED_TOOL_IDS (verifier and future), bypasses
+    team.yaml entirely and returns ResolveOk(DEFAULT_MODELS[role_id]).
+    Shipped tools are not user-configurable.
+
+    Raises ValueError for role_id in neither set (caller bug, not config issue).
     """
-    if role_id not in ROLE_IDS:
+    if role_id not in ROLE_IDS and role_id not in SHIPPED_TOOL_IDS:
         raise ValueError(
-            f"unknown role_id: {role_id!r}; must be one of {ROLE_IDS}"
+            f"unknown role_id: {role_id!r}; must be one of "
+            f"{ROLE_IDS + SHIPPED_TOOL_IDS}"
         )
+
+    # Shipped tools bypass team.yaml; always use DEFAULT_MODELS.
+    if role_id in SHIPPED_TOOL_IDS:
+        return ResolveOk(model=DEFAULT_MODELS[role_id], event=None)
 
     result = load_team_config(project_root)
 
