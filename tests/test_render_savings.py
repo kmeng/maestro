@@ -112,7 +112,7 @@ def test_malformed_row_skipped_with_warning(capsys, tmp_path: Path):
 
 
 def test_per_task_table_basic(tmp_path: Path):
-    """3 rows under T0.4 (1 coder + 1 librarian + 1 reviewer) → '3 (c1 l1 r1 s0)'."""
+    """3 rows under T0.4 (1 coder + 1 librarian + 1 reviewer) → '3 (c1 l1 r1 s0 v0 w0)'."""
     rows_raw = [
         _sample_row(task_id="T0.4", tool="coder",
                     started_at="2026-01-01T10:00:00Z", wall_s=60.0),
@@ -127,7 +127,7 @@ def test_per_task_table_basic(tmp_path: Path):
     groups = render_savings.group_by_task(rows)
     table = render_savings.render_per_task_table(groups)
     assert "T0.4" in table
-    assert "3 (c1 l1 r1 s0)" in table
+    assert "3 (c1 l1 r1 s0 v0 w0)" in table
 
 
 def test_per_role_table_excludes_estimates(tmp_path: Path):

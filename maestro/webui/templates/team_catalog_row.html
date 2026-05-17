@@ -2,20 +2,20 @@
   <td>{{ role_titles[role] }}</td>
   {% if mode == "edit" %}
     <td>
-      <input name="member" value="{{ entry.member }}">
+      <input class="field-input" name="member" value="{{ entry.member }}" style="max-width: 220px;">
       {% if field_errors.get('member') %}<span class="field-error">{{ field_errors['member'] }}</span>{% endif %}
     </td>
     <td>
-      <input name="model" value="{{ entry.model }}">
+      <input class="field-input" name="model" value="{{ entry.model }}" style="max-width: 280px;">
       {% if field_errors.get('model') %}<span class="field-error">{{ field_errors['model'] }}</span>{% endif %}
     </td>
     <td>
-      <button hx-post="/team/edit/{{ role }}" hx-include="closest tr">保存</button>
-      <button hx-get="/team/row/{{ role }}">取消</button>
+      <button class="btn btn-primary" hx-post="/team/edit/{{ role }}" hx-include="closest tr">保存</button>
+      <button class="btn" hx-get="/team/row/{{ role }}">取消</button>
     </td>
   {% else %}
     <td>{{ entry.member }}</td>
-    <td>{{ entry.model }}</td>
-    <td><button hx-get="/team/edit/{{ role }}">编辑</button></td>
+    <td class="mono">{{ entry.model }}</td>
+    <td><button class="btn" hx-get="/team/edit/{{ role }}">编辑</button></td>
   {% endif %}
 </tr>

@@ -85,19 +85,20 @@ def test_savings_happy_path_renders_200(client, tmp_path, monkeypatch):
     resp = client.get("/savings")
     assert resp.status_code == 200
     body = resp.text
-    # Title + section headers
-    assert "Dispatch Savings" in body
-    assert "Per-role" in body
-    assert "Per-time" in body
-    # Headline reflects 3 dispatches across the 2-day range
-    assert "<strong>3</strong>" in body
-    assert "dispatches" in body
+    # Title + section headers (redesigned page T9.9 uses "Savings" h1 only)
+    assert ">成本节省</h1>" in body
+    assert "按角色" in body
+    assert "按时间" in body
+    # Headline reflects 3 dispatches across the 2-day range (new design renders
+    # the count inside a .kpi-value div rather than the legacy <strong>).
+    assert ">3<" in body
+    assert "dispatch" in body
     assert "2026-05-10" in body
     assert "2026-05-11" in body
     # Footer shows path + telemetry-enabled
     assert str(log) in body
-    assert "Telemetry" in body
-    assert "enabled" in body
+    assert "遥测" in body
+    assert "已开启" in body
 
 
 def test_savings_per_role_cells_match_calc(client, tmp_path, monkeypatch):
@@ -134,8 +135,8 @@ def test_savings_per_time_reverse_chrono(client, tmp_path, monkeypatch):
     assert idx_11 != -1 and idx_10 != -1
     # The DATE CELL of 11 comes before the date cell of 10 inside the per-time
     # table. (10 also appears earlier in the headline, so we check the table
-    # region — slice from the "Per-time" heading onward.)
-    pt_idx = body.find("Per-time")
+    # region — slice from the "按时间" heading onward.)
+    pt_idx = body.find("按时间")
     assert pt_idx != -1
     sub = body[pt_idx:]
     assert sub.find("2026-05-11") < sub.find("2026-05-10")
@@ -147,7 +148,7 @@ def test_savings_disabled_renders_banner(client, monkeypatch):
     resp = client.get("/savings")
     assert resp.status_code == 200
     body = resp.text
-    assert "Telemetry is disabled" in body
+    assert "遥测已关闭" in body
     assert "MAESTRO_DISPATCH_LOG" in body
     # Methodology link present
     assert "savings-methodology.md" in body
@@ -160,7 +161,7 @@ def test_savings_empty_renders_cta(client, tmp_path, monkeypatch):
     resp = client.get("/savings")
     assert resp.status_code == 200
     body = resp.text
-    assert "No dispatches recorded yet" in body
+    assert "暂无调度记录" in body
     # CTA mentions the 4 worker roles
     assert "coder" in body and "librarian" in body and "reviewer" in body and "scribe" in body
     # Path is surfaced for transparency
@@ -175,7 +176,8 @@ def test_savings_error_renders_diagnostic(client, tmp_path, monkeypatch):
     resp = client.get("/savings")
     assert resp.status_code == 200
     body = resp.text
-    assert "Could not read the dispatch log" in body
+    # Redesigned error template (T9.9) uses Chinese title "无法读取 dispatch 日志".
+    assert "无法读取 dispatch 日志" in body or "Could not read the dispatch log" in body
     assert str(bad_path) in body
     # Some form of the underlying exception text should appear in the <pre> block
     assert "directory" in body.lower() or "errno" in body.lower()
@@ -196,7 +198,7 @@ def test_savings_malformed_rows_footnote(client, tmp_path, monkeypatch):
     assert resp.status_code == 200
     body = resp.text
     # Happy template still rendered (the 1 valid row produces real content)
-    assert "Dispatch Savings" in body
-    assert "Per-role" in body
+    assert ">成本节省</h1>" in body
+    assert "按角色" in body
     # Footnote with the skipped count (2 = JSON-decode + bad-started_at)
-    assert "2 malformed rows skipped" in body
+    assert "2 条异常行已跳过" in body

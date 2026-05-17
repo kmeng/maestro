@@ -1,125 +1,33 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Maestro 团队组建向导</title>
-    <script src="/static/vendor/htmx.min.js"></script>
-    <style>
-        :root {
-            --bg: #ffffff;
-            --text: #1a1a1a;
-            --border: #ccc;
-            --muted: #666;
-            --error: #c0392b;
-            --button-bg: #f0f0f0;
-            --button-hover: #e0e0e0;
-        }
-        @media (prefers-color-scheme: dark) {
-            :root {
-                --bg: #1e1e1e;
-                --text: #e0e0e0;
-                --border: #555;
-                --muted: #999;
-                --error: #ff6b6b;
-                --button-bg: #333;
-                --button-hover: #444;
-            }
-        }
-        body {
-            font-family: system-ui, -apple-system, "Noto Sans CJK SC", sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-        }
-        #wizard-container {
-            max-width: 640px;
-            width: 92%;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 2em;
-            background: var(--bg);
-        }
-        h2 {
-            margin-top: 0;
-        }
-        .field-error {
-            color: var(--error);
-            font-size: 0.9em;
-            margin-left: 0.5em;
-        }
-        .error-banner {
-            background-color: var(--error);
-            color: white;
-            padding: 0.5em 0.75em;
-            border-radius: 4px;
-            margin-bottom: 1em;
-        }
-        fieldset {
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            margin-bottom: 0.75em;
-            padding: 0.75em;
-        }
-        legend {
-            font-weight: 600;
-            padding: 0 0.4em;
-        }
-        label {
-            display: block;
-            margin-top: 0.5em;
-        }
-        input {
-            margin-left: 0.5em;
-            padding: 0.25em 0.4em;
-            border: 1px solid var(--border);
-            border-radius: 3px;
-            background: var(--bg);
-            color: var(--text);
-        }
-        button, .button {
-            background-color: var(--button-bg);
-            border: 1px solid var(--border);
-            padding: 0.4em 1em;
-            margin-top: 0.75em;
-            margin-right: 0.5em;
-            cursor: pointer;
-            border-radius: 4px;
-            color: inherit;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 0.95em;
-        }
-        button:hover, .button:hover {
-            background-color: var(--button-hover);
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 1em 0;
-        }
-        th, td {
-            border: 1px solid var(--border);
-            padding: 0.5em;
-            text-align: left;
-        }
-        footer {
-            position: fixed;
-            bottom: 1em;
-            right: 1.5em;
-            font-size: 0.8em;
-            color: var(--muted);
-        }
-    </style>
-</head>
-<body>
-    <div id="wizard-container">
-        {{ step_html | safe }}
-    </div>
-    <footer>v{{ version }}</footer>
-</body>
-</html>
+{% extends "_base.html" %}
+{% set nav_active = "team" %}
+{% block title %}团队组建向导{% endblock %}
+
+{% block extra_head %}
+<!-- Page-specific wizard progress styling – not in shared CSS per design doc § 5.3 -->
+<style>
+.wizard-progress {
+  display: flex; align-items: center; gap: 4px;
+  margin-bottom: 24px; padding: 8px 0;
+}
+.wp-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--border-strong); border: 2px solid var(--border-strong);
+  flex-shrink: 0;
+}
+.wp-dot.active { background: var(--accent); border-color: var(--accent); }
+.wp-dot.done { background: var(--accent); border-color: var(--accent); opacity: 0.6; }
+.wp-line {
+  flex: 1; height: 2px; background: var(--border-strong);
+}
+.wp-line.done { background: var(--accent); opacity: 0.6; }
+.wizard-step .field { margin-bottom: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+  <h1 class="page-h1">团队组建向导</h1>
+  <div class="page-sub">配置四个角色的成员别名与默认模型，保存到 <span class="mono">.maestro/team.yaml</span>。</div>
+  <section class="panel" style="max-width: 720px;">
+    <div id="wizard-container">{{ step_html | safe }}</div>
+  </section>
+{% endblock %}

@@ -1,8 +1,8 @@
 """Team configuration domain — Pydantic models + YAML I/O + role resolver.
 
 Public API:
-    Models (T1.1):
-        TeamConfig, RoleEntry, RoleId, DEFAULT_MODELS, ROLE_IDS
+    Models (T1.1; T8.2 adds SHIPPED_TOOL_IDS):
+        TeamConfig, RoleEntry, RoleId, DEFAULT_MODELS, ROLE_IDS, SHIPPED_TOOL_IDS
     I/O (T1.2):
         load_team_config, save_team_config, TeamConfigInvalid
     Resolver (T1.6):
@@ -17,6 +17,7 @@ from maestro.team.io import (
 from maestro.team.models import (
     DEFAULT_MODELS,
     ROLE_IDS,
+    SHIPPED_TOOL_IDS,
     RoleEntry,
     RoleId,
     TeamConfig,
@@ -34,6 +35,7 @@ __all__ = [
     "ResolveRefuse",
     "RoleEntry",
     "RoleId",
+    "SHIPPED_TOOL_IDS",
     "TeamConfig",
     "TeamConfigInvalid",
     "load_team_config",

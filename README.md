@@ -110,54 +110,68 @@ Cheap models make mistakes. Maestro's job is to catch them before you do.
 
 ## Quick start
 
-### Install
+### 1. Download the binary
+
+Maestro ships as a single-file native binary — no Python, no `pip`, no virtualenv. Grab the artifact for your OS from the [latest release](https://github.com/kmeng/maestro/releases/latest):
+
+| OS                            | Artifact                       |
+| ----------------------------- | ------------------------------ |
+| macOS (Apple Silicon)         | `maestro-macos-arm64.tar.gz`   |
+| Linux x64                     | `maestro-linux-x64.tar.gz`     |
+| Windows x64                   | `maestro-windows-x64.zip`      |
+
+Extract the archive and put `maestro` somewhere on your `PATH`:
 
 ```bash
-pip install maestro-mcp
+# macOS / Linux
+tar -xzf maestro-macos-arm64.tar.gz
+sudo mv maestro /usr/local/bin/
+
+# Windows (PowerShell)
+Expand-Archive maestro-windows-x64.zip
+Move-Item maestro\maestro.exe "$env:USERPROFILE\bin\"
 ```
 
-### Configure
+> **macOS first run**: the binary is unsigned in v0.1 (code-signing is planned for v0.2+). macOS Gatekeeper will say *"developer cannot be verified"*. Bypass once: right-click `maestro` in Finder → Open → Open in the dialog. Future runs work normally.
 
-Create a config file at `~/.maestro/config.yaml`:
+### 2. Configure your API keys
 
-```yaml
-providers:
-  deepseek:
-    api_key: ${DEEPSEEK_API_KEY}
-    base_url: https://api.deepseek.com/v1
-  qwen:
-    api_key: ${DASHSCOPE_API_KEY}
-    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  anthropic:
-    api_key: ${ANTHROPIC_API_KEY}  # for Sonnet workers (optional)
+Maestro reads provider credentials from `.env` (in your project root) or from your shell environment. The minimum is one of `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `ANTHROPIC_API_KEY`:
 
-team:
-  coder:
-    provider: deepseek
-    model: deepseek-v4-pro
-  librarian:
-    provider: deepseek
-    model: deepseek-v4-flash
-  reviewer:
-    provider: deepseek
-    model: deepseek-v4-pro
-  scribe:
-    provider: deepseek
-    model: deepseek-v4-flash
-
-quality_gates:
-  auto_review_threshold_loc: 50
-  test_driven_implementation: true
-  confidence_escalation: true
+```bash
+# .env in your project root, or export to your shell
+DEEPSEEK_API_KEY=sk-...
 ```
 
-### Register with Claude Code
+Get a DeepSeek key at [platform.deepseek.com](https://platform.deepseek.com); the free signup credit is plenty to bootstrap with.
+
+The role-to-model mapping has defaults that work out of the box (DeepSeek v4-pro for judgment-heavy roles, v4-flash for extraction). To override per-role, drop a `team.yaml` in your project root — see [the team config guide](docs/architecture.md) for the schema.
+
+### 3. Register with Claude Code
 
 ```bash
 maestro install
 ```
 
-This adds Maestro to your `~/.claude/mcp.json`. Restart Claude Code; you should see `maestro` connected when you run `/mcp`.
+This writes (or updates) `~/.claude/mcp.json` with a `maestro` entry pointing at the binary. Flags:
+
+- `--force` — overwrite an existing maestro entry without prompting
+- `--dry-run` — preview the change without writing
+- `--config-path <path>` — override the target (advanced / testing)
+
+### 4. Restart Claude Code, then verify
+
+After install, **restart Claude Code** so it picks up the new MCP server (see [the upgrade guide](docs/ops/mcp-reload.md) for why this is needed). Then in any Claude Code session run:
+
+```
+/mcp
+```
+
+You should see `maestro` listed as **connected** with 6 tools: `coder`, `librarian`, `reviewer`, `scribe`, `verifier`, `spec-writer`.
+
+### Upgrading
+
+When a new release comes out: download the new artifact, replace the binary on PATH, and **restart Claude Code** (the MCP tool-list is cached per session — same reload story as the first install).
 
 ### Use it
 
@@ -219,21 +233,21 @@ Every step shows what was dispatched, what came back, what it cost, and how the 
 
 ## Project status
 
-Maestro is in early development. The MVP (Phase 1) is functional and used daily by the maintainers; production-readiness and broader provider support are in progress.
+Maestro is past MVP and used daily by the maintainers. v0.0.4 (the current release branch) adds a Web UI cockpit and two new worker roles (`verifier`, `spec-writer`); v0.0.3 (the foundation release) shipped the four core roles, structured audit logging, and the auto-review quality gate.
 
-- ✅ MCP server with 4 core roles
+- ✅ MCP server with 6 worker roles (`coder`, `librarian`, `reviewer`, `scribe`, `verifier`, `spec-writer`)
 - ✅ DeepSeek (v4-pro / v4-flash) providers; Anthropic + Qwen pluggable
 - ✅ Structured reasoning + concerns from every worker
-- ✅ Audit logging to JSONL
-- 🔄 Test-driven dispatch (in progress)
-- 🔄 Auto-review quality gate (in progress)
-- 📋 Confidence escalation
-- 📋 Cost dashboard CLI (`maestro stats`)
+- ✅ Audit logging to JSONL + per-dispatch cost telemetry
+- ✅ Auto-review quality gate (reviewer is a mandatory pass before merge)
+- ✅ Web UI cockpit (`/`, `/team`, `/wizard`, `/scaffold`, `/live`, `/history`, `/savings`, `/problems`) — replaces the CLI cost dashboard
+- 🔄 Packaging & distribution (pip / homebrew / docker — scheduled for v0.0.5)
+- 📋 Confidence escalation (model self-selects based on task complexity)
 - 📋 Local model support via Ollama
 - 📋 Role marketplace (community-contributed roles)
 - 📋 Benchmarks against SWE-bench subset
 
-See the [roadmap](./ROADMAP.md) for details.
+Each release is documented in [`docs/journal/`](./docs/journal/); end-of-epic summaries with worker-level cost telemetry land in [`docs/savings.md`](./docs/savings.md).
 
 ---
 

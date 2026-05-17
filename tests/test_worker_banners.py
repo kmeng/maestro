@@ -18,7 +18,7 @@ import pytest
 
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_BOOTSTRAP = _REPO_ROOT / "bootstrap" / "maestro_server.py"
+_BOOTSTRAP = _REPO_ROOT / "maestro" / "mcp_server.py"
 
 BANNER_REGEX = re.compile(
     r"^\[(\w+) dispatch — ([\w.\-]+) — ([\d.]+)s — (\d+) tokens\]$"
@@ -155,10 +155,7 @@ def test_coder_emits_banner_at_start_of_plaintext(server, monkeypatch):
             _valid_scribe_output,
             {
                 "diff": "+x",
-                "issue_number": 1,
-                "issue_title": "t",
-                "issue_body": "b",
-                "convention": "c",
+                "purpose": "Issue #1 (t): b",
             },
         ),
     ],

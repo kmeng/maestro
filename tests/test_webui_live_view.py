@@ -26,7 +26,11 @@ def test_live_route_registered_and_renders_skeleton(client):
     response = client.get("/live")
     assert response.status_code == 200
     body = response.text
-    assert "实时调度" in body
+    # Redesigned page (T9.7) uses English page-h1 "Live" with the original
+    # "实时调度" Chinese phrase folded into the .page-sub copy as
+    # "实时订阅 dispatch event 流（SSE）". Match on the unique substring
+    # that identifies the live page in both layouts.
+    assert ">Live</h1>" in body or "实时调度" in body
     assert "进行中" in body
     assert "最近完成" in body
     assert "暂无进行中的调度" in body
@@ -56,7 +60,11 @@ def test_live_response_is_html_utf8(client):
     content_type = response.headers.get("content-type", "")
     assert content_type.startswith("text/html")
     body = response.text
-    assert "实时调度" in body
+    # Redesigned page (T9.7) uses English page-h1 "Live" with the original
+    # "实时调度" Chinese phrase folded into the .page-sub copy as
+    # "实时订阅 dispatch event 流（SSE）". Match on the unique substring
+    # that identifies the live page in both layouts.
+    assert ">Live</h1>" in body or "实时调度" in body
     assert "进行中" in body
     assert "已连接" in body
     assert "utf-8" in content_type.lower()

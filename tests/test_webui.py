@@ -49,12 +49,17 @@ def test_index_returns_200_html():
     assert response.headers["content-type"].startswith("text/html")
 
 
-def test_index_contains_chinese_hero_copy():
-    """GET / body contains expected Chinese hero copy strings."""
+def test_index_contains_overview_skeleton():
+    """GET / body contains the Overview-page structural markers.
+
+    Epic 9 / T9.3 replaced the legacy hero copy ("等待第一支乐章 · 本地 AI 软件团队")
+    with the Dashboard Cockpit Overview page driven by /api/overview. The
+    old hero strings are retired; assert the new page's skeleton instead.
+    """
     response = client.get("/")
     body = response.text
-    assert "等待第一支乐章" in body
-    assert "本地 AI 软件团队" in body
+    assert 'class="page-h1">总览</h1>' in body
+    assert "/api/overview" in body
 
 
 def test_index_loads_vendored_htmx():

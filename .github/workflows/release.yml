@@ -1,0 +1,186 @@
+# .github/workflows/release.yml
+# -----------------------------------------------------------------
+# Release workflow for Maestro binaries across macOS, Linux, Windows
+# -----------------------------------------------------------------
+#
+# TRIGGERS:
+# 1) Push a tag matching v<major>.<minor>.<patch>[-prerelease]*
+#    Example: v0.1.0, v0.1.0-rc1, v1.2.3
+#    This runs the full build + release job and creates a GitHub Release.
+# 2) Manual workflow_dispatch (no tag required).
+#    This runs the build matrix and uploads artifacts but SKIPS the release
+#    job – useful for dry-run / testing the build before tagging.
+#
+# RUNTIME & COST:
+# - macOS builds cost ~10x the Linux build (GitHub-hosted macOS minute multiplier).
+# - Total runtime per run: approx 5-10 minutes.
+# - All three OS legs run in parallel; fail-fast is off so a single OS failure
+#   does not cancel others.
+#
+# PERMISSIONS:
+# - Default: contents: read (least privilege).
+# - Release job: contents: write (required to create/upload GitHub Release).
+#
+# ARTIFACTS:
+# - Each OS job produces a single artifact: tar.gz (Linux/macOS) or zip (Windows).
+# - The release job downloads all artifacts and attaches them to the release.
+# -----------------------------------------------------------------
+
+name: Build and Release
+
+on:
+  push:
+    tags:
+      # Tag must start with v followed by a semver-like string.
+      # The glob pattern allows v0.1.0, v0.1.0-rc1, etc.
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:  # manual trigger for testing
+
+# Least-privilege by default
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.artifact_name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Fail-fast false: run all OS even if one fails, so we see the full picture.
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact_name: maestro-macos-arm64.tar.gz
+            archive_cmd: tar
+          - os: ubuntu-latest
+            artifact_name: maestro-linux-x64.tar.gz
+            archive_cmd: tar
+          - os: windows-latest
+            artifact_name: maestro-windows-x64.zip
+            archive_cmd: zip
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+          # bootstrap/requirements.txt may contain additional build-only deps
+          if [ -f bootstrap/requirements.txt ]; then pip install -r bootstrap/requirements.txt; fi
+
+      - name: Build binary with PyInstaller
+        run: pyinstaller pyinstaller.spec --noconfirm
+
+      - name: Smoke-test binary
+        shell: bash
+        run: |
+          # Binary name differs on Windows
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            BIN=dist/maestro.exe
+          else
+            BIN=dist/maestro
+          fi
+          $BIN --version
+          $BIN --version 2>&1 | grep -q "maestro 0.1.0" || {
+            echo "ERROR: binary produced unexpected version output"
+            exit 1
+          }
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          if [ "${{ matrix.archive_cmd }}" == "tar" ]; then
+            # Linux / macOS: create tar.gz including binary, README, LICENSE (if present)
+            # Stage files into a temp dir so tar bundles them under a single archive root.
+            STAGE="$(mktemp -d)"
+            cp dist/maestro "$STAGE/"
+            [ -f README.md ] && cp README.md "$STAGE/" || true
+            [ -f LICENSE ] && cp LICENSE "$STAGE/" || true
+            tar -czvf "${{ matrix.artifact_name }}" -C "$STAGE" .
+          else
+            # Windows: use PowerShell to create zip with optional files
+            pwsh -Command "
+              \$files = @('dist\maestro.exe')
+              if (Test-Path README.md) { \$files += 'README.md' }
+              if (Test-Path LICENSE)    { \$files += 'LICENSE' }
+              Compress-Archive -Path \$files -DestinationPath '${{ matrix.artifact_name }}'
+            "
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}
+
+  release:
+    name: Create GitHub Release and attach binaries
+    needs: build
+    # Only run when the trigger was a tag push (not workflow_dispatch)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed for gh release create/upload
+
+    steps:
+      # Checkout repository at the pushed tag to access release-notes.md
+      - name: Checkout repository at tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: List downloaded files
+        run: ls -R
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          FLAGS=""
+          # Prerelease if tag contains a hyphen (e.g., v0.1.0-rc1)
+          if [[ "$TAG" == *-* ]]; then
+            FLAGS="--prerelease"
+          fi
+          gh release create "$TAG" --notes-file release-notes.md $FLAGS
+
+      - name: Upload binaries to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          # Artifacts were downloaded into directories named after the artifact_name.
+          # Each directory contains exactly one binary whose name starts with 'maestro-'.
+          gh release upload "$TAG" */maestro-*
+
+  verify:
+    name: Smoke-test released artifact on ${{ matrix.os }}
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]  # Windows skipped per smoke script
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository at tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - name: Run fresh-install smoke
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAESTRO_GITHUB_REPO: ${{ github.repository }}
+        run: bash scripts/smoke-fresh-install.sh

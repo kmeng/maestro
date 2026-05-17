@@ -1,5 +1,5 @@
 """
-Tests for Maestro's worker roles in bootstrap/maestro_server.py.
+Tests for Maestro's worker roles in maestro/mcp_server.py.
 
 Covers:
   - tool registration (TOOLS_REGISTRY contents)
@@ -23,19 +23,15 @@ import pytest
 
 
 # ============================================================
-# Module loading — bootstrap/maestro_server.py is not a package,
-# so we load it via importlib once and share across tests.
+# Module loading — T10.1 relocated the server into the maestro package
+# so it is now a regular import. The fixture is kept for test API
+# stability (existing tests parameterise on `server`).
 # ============================================================
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_BOOTSTRAP = _REPO_ROOT / "bootstrap" / "maestro_server.py"
 
 
 @pytest.fixture(scope="module")
 def server():
-    spec = importlib.util.spec_from_file_location("maestro_server", _BOOTSTRAP)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    import maestro.mcp_server as module
     return module
 
 
@@ -44,10 +40,11 @@ def server():
 # ============================================================
 
 
-def test_tools_registry_contains_four_roles_plus_job_status(server):
-    """Four worker roles plus the job_status infrastructure tool (ADR-0009)."""
+def test_tools_registry_contains_six_roles_plus_job_status(server):
+    """Six worker roles (T8.3 adds spec_writer) plus the job_status
+    infrastructure tool (ADR-0009)."""
     assert set(server.TOOLS_REGISTRY.keys()) == {
-        "coder", "librarian", "reviewer", "scribe", "job_status",
+        "coder", "librarian", "reviewer", "scribe", "verifier", "spec_writer", "job_status",
     }
 
 
@@ -208,6 +205,103 @@ def test_librarian_rejects_oversize_document(server):
     )
     err = _parse_error(result)
     assert err["error"] == "document_too_large"
+
+
+# ============================================================
+# librarian_handler — file_paths multi-file input (T8.1)
+# ============================================================
+
+
+def test_librarian_rejects_when_file_path_and_file_paths_both_supplied(server, tmp_path):
+    """3-way XOR: file_path + file_paths both supplied → input_validation error."""
+    f = tmp_path / "doc.md"
+    f.write_text("hello", encoding="utf-8")
+    result = asyncio.run(
+        server._librarian_impl(
+            {"file_path": str(f), "file_paths": [str(f)], "query": "x"}
+        )
+    )
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "exactly one" in err["message"]
+
+
+def test_librarian_rejects_when_file_paths_and_document_text_both_supplied(server, tmp_path):
+    """3-way XOR: file_paths + document_text both supplied → input_validation error."""
+    f = tmp_path / "doc.md"
+    f.write_text("hello", encoding="utf-8")
+    result = asyncio.run(
+        server._librarian_impl(
+            {"file_paths": [str(f)], "document_text": "inline", "query": "x"}
+        )
+    )
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+
+
+def test_librarian_rejects_oversize_combined_file_paths(server, tmp_path):
+    """Soft cap applies to the assembled multi-file document_text."""
+    a = tmp_path / "a.md"
+    b = tmp_path / "b.md"
+    a.write_text("x" * 50_000, encoding="utf-8")
+    b.write_text("y" * 50_000, encoding="utf-8")
+    result = asyncio.run(
+        server._librarian_impl(
+            {"file_paths": [str(a), str(b)], "query": "x"}
+        )
+    )
+    err = _parse_error(result)
+    assert err["error"] == "document_too_large"
+
+
+def test_librarian_rejects_file_paths_with_missing_entry(server, tmp_path):
+    """If any file_paths entry doesn't exist → file_not_found error naming that path."""
+    good = tmp_path / "good.md"
+    good.write_text("hi", encoding="utf-8")
+    missing = tmp_path / "missing.md"
+    result = asyncio.run(
+        server._librarian_impl(
+            {"file_paths": [str(good), str(missing)], "query": "x"}
+        )
+    )
+    err = _parse_error(result)
+    assert err["error"] == "file_not_found"
+    assert str(missing) in err["message"]
+
+
+def test_librarian_accepts_file_paths_multi_file(server, monkeypatch, tmp_path):
+    """file_paths=[a, b] assembles one delimited document_text and reaches the model."""
+    a = tmp_path / "a.md"
+    b = tmp_path / "b.md"
+    a.write_text("alpha content", encoding="utf-8")
+    b.write_text("beta content", encoding="utf-8")
+
+    valid_output = {
+        "hard_constraints": [],
+        "summary": "ok",
+        "recommend_full_read": [],
+        "concerns": [],
+    }
+    mock_create = AsyncMock(
+        return_value=_mock_deepseek_response(json.dumps(valid_output))
+    )
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    result = asyncio.run(
+        server._librarian_impl(
+            {"file_paths": [str(a), str(b)], "query": "find both"}
+        )
+    )
+
+    # Successful response (no error envelope at top level)
+    parsed = json.loads(result[0].text)
+    assert "error" not in parsed
+    # Delimited assembly reached the model
+    user_msg = mock_create.call_args.kwargs["messages"][1]["content"]
+    assert f"=== FILE: {a} ===" in user_msg
+    assert f"=== FILE: {b} ===" in user_msg
+    assert "alpha content" in user_msg
+    assert "beta content" in user_msg
 
 
 # ============================================================
@@ -574,13 +668,18 @@ def test_reviewer_returns_error_when_output_schema_invalid(server, monkeypatch):
 
 
 def test_scribe_tool_required_fields(server):
-    assert set(server.SCRIBE_TOOL.inputSchema["required"]) == {
-        "diff",
-        "issue_number",
-        "issue_title",
-        "issue_body",
-        "convention",
-    }
+    """T8.8: schema requires only generic primitives; issue_* fields removed."""
+    assert set(server.SCRIBE_TOOL.inputSchema["required"]) == {"diff", "purpose"}
+    # The optional, workflow-agnostic properties are still present:
+    props = server.SCRIBE_TOOL.inputSchema["properties"]
+    assert "style" in props
+    assert "audience_context" in props
+    assert "task_id" in props
+    assert "issue_number" in props  # retained as optional telemetry only
+    # Removed GitHub-issue-flavored required fields:
+    assert "issue_title" not in props
+    assert "issue_body" not in props
+    assert "convention" not in props
 
 
 def test_validate_scribe_accepts_valid(server):
@@ -606,28 +705,66 @@ def test_validate_scribe_rejects_non_string_pr_body(server):
 
 
 def test_scribe_rejects_missing_diff(server):
-    result = asyncio.run(server._scribe_impl({
-        "issue_number": 1,
-        "issue_title": "x",
-        "issue_body": "y",
-        "convention": "z",
-    }))
+    result = asyncio.run(server._scribe_impl({"purpose": "add Y"}))
     err = _parse_error(result)
     assert err["error"] == "input_validation"
     assert "diff" in err["message"]
 
 
-def test_scribe_rejects_non_integer_issue_number(server):
+def test_scribe_rejects_missing_purpose(server):
+    """T8.8: purpose is required."""
+    result = asyncio.run(server._scribe_impl({"diff": "+ added Y"}))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "purpose" in err["message"]
+
+
+def test_scribe_rejects_non_integer_issue_number_when_present(server):
+    """T8.8: issue_number is optional telemetry; if given, must be int."""
     result = asyncio.run(server._scribe_impl({
         "diff": "x",
+        "purpose": "add Y",
         "issue_number": "1",  # string instead of int
-        "issue_title": "x",
-        "issue_body": "",
-        "convention": "x",
     }))
     err = _parse_error(result)
     assert err["error"] == "input_validation"
     assert "issue_number" in err["message"]
+
+
+def test_scribe_rejects_invalid_style(server):
+    """T8.8: style, if present, must be in the enum."""
+    result = asyncio.run(server._scribe_impl({
+        "diff": "x",
+        "purpose": "add Y",
+        "style": "haiku",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "style" in err["message"]
+
+
+def test_scribe_accepts_minimal_required_only(server, monkeypatch):
+    """T8.8: diff + purpose alone is a valid call; style defaults; optional fields absent."""
+    valid_output = {
+        "commit_message": "feat: add Y\n\nWe need Y.",
+        "pr_title": "",
+        "pr_body": "",
+        "concerns": [],
+    }
+    mock_create = AsyncMock(return_value=_mock_deepseek_response(json.dumps(valid_output)))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    result = asyncio.run(server._scribe_impl({
+        "diff": "+ added Y",
+        "purpose": "We need Y.",
+    }))
+    parsed = json.loads(result[0].text)
+    assert isinstance(parsed.pop("_banner"), str)
+    assert parsed == valid_output
+    # Default style should appear in the user prompt:
+    user_msg = mock_create.call_args.kwargs["messages"][1]["content"]
+    assert "Style: commit message" in user_msg
+    assert "(none provided" in user_msg  # audience_context absent path
 
 
 def test_scribe_happy_path_uses_flash(server, monkeypatch):
@@ -643,15 +780,56 @@ def test_scribe_happy_path_uses_flash(server, monkeypatch):
 
     result = asyncio.run(server._scribe_impl({
         "diff": "+ added Y",
-        "issue_number": 1,
-        "issue_title": "Add Y",
-        "issue_body": "We need Y.",
-        "convention": "Conventional Commits.",
+        "purpose": "Issue #1: Add Y — we need Y.",
+        "style": "PR description",
+        "audience_context": "Conventional Commits.",
     }))
     parsed = json.loads(result[0].text)
     assert isinstance(parsed.pop("_banner"), str)
     assert parsed == valid_output
     assert mock_create.call_args.kwargs["model"] == server.MODEL_FLASH
+    # Verify the new schema fields reach the model
+    user_msg = mock_create.call_args.kwargs["messages"][1]["content"]
+    assert "Purpose:" in user_msg
+    assert "Style: PR description" in user_msg
+    assert "Conventional Commits." in user_msg
+
+
+def test_scribe_migration_old_github_issue_workflow_still_works(server, monkeypatch):
+    """T8.8 conversion test: callers migrating from the old schema can
+    fold their issue_number/issue_title/issue_body/convention into the
+    new `purpose` + `audience_context` fields and get equivalent output.
+
+    Per feedback_migration_needs_conversion_test."""
+    valid_output = {
+        "commit_message": "feat: add Y\n\nIssue #42: Add Y.",
+        "pr_title": "Add Y",
+        "pr_body": "## Summary\n\nAdds Y.\n\nCloses #42.",
+        "concerns": [],
+    }
+    mock_create = AsyncMock(return_value=_mock_deepseek_response(json.dumps(valid_output)))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    # Caller folds old issue_* and convention into new fields:
+    old_issue_number = 42
+    old_issue_title = "Add Y"
+    old_issue_body = "We need Y because Z."
+    old_convention = "Conventional Commits; co-author lines required."
+
+    result = asyncio.run(server._scribe_impl({
+        "diff": "+ added Y",
+        "purpose": f"Issue #{old_issue_number}: {old_issue_title}\n\n{old_issue_body}",
+        "style": "PR description",
+        "audience_context": old_convention,
+        "issue_number": old_issue_number,  # telemetry only now
+    }))
+    parsed = json.loads(result[0].text)
+    assert parsed["commit_message"] == valid_output["commit_message"]
+    assert parsed["pr_title"] == valid_output["pr_title"]
+    # Verify telemetry attribution still works via the optional issue_number field
+    user_msg = mock_create.call_args.kwargs["messages"][1]["content"]
+    assert "Issue #42" in user_msg  # appears in purpose
+    assert "Conventional Commits" in user_msg  # appears in audience_context
 
 
 # ============================================================
@@ -1032,10 +1210,7 @@ def test_scribe_v0_0_2_env_only_fallback_path(server, monkeypatch, tmp_path):
 
     result = asyncio.run(server._scribe_impl({
         "diff": "some diff",
-        "issue_number": 1,
-        "issue_title": "t",
-        "issue_body": "b",
-        "convention": "c",
+        "purpose": "Issue #1 (t): b",
     }))
 
     assert len(result) == 1
@@ -1052,6 +1227,163 @@ def test_scribe_v0_0_2_env_only_fallback_path(server, monkeypatch, tmp_path):
     assert events[0].role == "scribe"
     assert events[1].event_type == "dispatch.start"
     assert events[2].event_type == "dispatch.end"
+
+
+# ============================================================
+# Verifier — tool registration + input validation + happy path (T8.2)
+# ============================================================
+
+
+def test_verifier_tool_required_fields(server):
+    """Schema requires `claims`; source is XOR-handled at handler level."""
+    schema = server.VERIFIER_TOOL.inputSchema
+    assert schema["required"] == ["claims"]
+    assert "file_paths" in schema["properties"]
+    assert "document_text" in schema["properties"]
+    assert "task_id" not in schema["required"]
+    assert "issue_number" not in schema["required"]
+
+
+def test_verifier_rejects_empty_claims(server):
+    result = asyncio.run(server._verifier_impl({"document_text": "x"}))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "claims" in err["message"]
+
+
+def test_verifier_rejects_claims_with_non_string_entry(server):
+    result = asyncio.run(
+        server._verifier_impl(
+            {"claims": ["valid claim", 42], "document_text": "x"}
+        )
+    )
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+
+
+def test_verifier_rejects_when_neither_source_provided(server):
+    result = asyncio.run(server._verifier_impl({"claims": ["claim"]}))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "exactly one" in err["message"]
+
+
+def test_verifier_rejects_when_both_sources_provided(server, tmp_path):
+    f = tmp_path / "doc.md"
+    f.write_text("hello", encoding="utf-8")
+    result = asyncio.run(
+        server._verifier_impl(
+            {"claims": ["claim"], "file_paths": [str(f)], "document_text": "hi"}
+        )
+    )
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+
+
+def test_verifier_happy_path_with_file_paths(server, monkeypatch, tmp_path):
+    """Multi-file source + 3 claims roundtrip; verify output shape + tool name."""
+    a = tmp_path / "a.md"
+    b = tmp_path / "b.md"
+    a.write_text("alpha", encoding="utf-8")
+    b.write_text("beta", encoding="utf-8")
+
+    valid_output = {
+        "verifications": [
+            {"claim": "alpha is in a", "status": "verified",
+             "actual": "a contains 'alpha'", "evidence": "a.md: alpha"},
+            {"claim": "gamma is in b", "status": "incorrect",
+             "actual": "b contains 'beta', not 'gamma'", "evidence": "b.md: beta"},
+            {"claim": "delta is somewhere", "status": "ambiguous",
+             "actual": "neither file mentions delta", "evidence": "(no match)"},
+        ],
+        "concerns": [],
+    }
+    mock_create = AsyncMock(
+        return_value=_mock_deepseek_response(json.dumps(valid_output))
+    )
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    result = asyncio.run(
+        server._verifier_impl({
+            "claims": ["alpha is in a", "gamma is in b", "delta is somewhere"],
+            "file_paths": [str(a), str(b)],
+        })
+    )
+    assert len(result) == 1
+    parsed = json.loads(result[0].text)
+    assert "_banner" in parsed
+    assert "verifier" in parsed["_banner"]
+    assert len(parsed["verifications"]) == 3
+    statuses = {v["status"] for v in parsed["verifications"]}
+    assert statuses == {"verified", "incorrect", "ambiguous"}
+
+    user_msg = mock_create.call_args.kwargs["messages"][1]["content"]
+    assert f"=== FILE: {a} ===" in user_msg
+    assert f"=== FILE: {b} ===" in user_msg
+    assert "Claims:" in user_msg
+
+
+def test_verifier_returns_error_when_status_is_invalid(server, monkeypatch):
+    """Output validator rejects status outside the allowed enum."""
+    bad_output = {
+        "verifications": [
+            {"claim": "x", "status": "uncertain", "actual": "y", "evidence": "z"},
+        ],
+        "concerns": [],
+    }
+    mock_create = AsyncMock(
+        return_value=_mock_deepseek_response(json.dumps(bad_output))
+    )
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+    result = asyncio.run(
+        server._verifier_impl({"claims": ["x"], "document_text": "src"})
+    )
+    err = _parse_error(result)
+    assert err["error"] == "output_schema_invalid"
+
+
+def test_verifier_returns_error_on_oversize_document(server):
+    huge = "x" * 100_000
+    result = asyncio.run(
+        server._verifier_impl({"claims": ["c"], "document_text": huge})
+    )
+    err = _parse_error(result)
+    assert err["error"] == "document_too_large"
+
+
+def test_verifier_returns_error_when_model_response_is_not_json(server, monkeypatch):
+    mock_create = AsyncMock(return_value=_mock_deepseek_response("not valid json {{{"))
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+    result = asyncio.run(
+        server._verifier_impl({"claims": ["x"], "document_text": "src"})
+    )
+    err = _parse_error(result)
+    assert err["error"] == "output_not_json"
+
+
+def test_validate_verifier_output_accepts_valid_shape(server):
+    valid = {
+        "verifications": [
+            {"claim": "c", "status": "verified", "actual": "a", "evidence": "e"},
+        ],
+        "concerns": [],
+    }
+    assert server._validate_verifier_output(valid) is None
+
+
+def test_validate_verifier_output_rejects_missing_verifications(server):
+    assert "missing key: verifications" in server._validate_verifier_output({})
+
+
+def test_validate_verifier_output_rejects_bad_status(server):
+    bad = {
+        "verifications": [
+            {"claim": "c", "status": "maybe", "actual": "a", "evidence": "e"},
+        ],
+        "concerns": [],
+    }
+    err = server._validate_verifier_output(bad)
+    assert "status" in err and "maybe" in err
 
 
 def test_scribe_broken_team_yaml_refuses(server, monkeypatch, tmp_path):
@@ -1081,8 +1413,7 @@ def test_scribe_broken_team_yaml_refuses(server, monkeypatch, tmp_path):
     monkeypatch.setattr("maestro.dispatcher.Path.cwd", lambda: tmp_path)
 
     result = asyncio.run(server._scribe_impl({
-        "diff": "some diff", "issue_number": 1, "issue_title": "t",
-        "issue_body": "b", "convention": "c",
+        "diff": "some diff", "purpose": "Issue #1 (t): b",
     }))
 
     assert mock_create.call_count == 0
@@ -1092,3 +1423,216 @@ def test_scribe_broken_team_yaml_refuses(server, monkeypatch, tmp_path):
     events = scan_log(tmp_path / ".maestro" / "logs" / "dispatch.jsonl")
     assert len(events) == 1
     assert events[0].event_type == "dispatch.refused.config_invalid"
+
+
+# ============================================================
+# Spec-writer — tool registration + input validation + happy path (T8.3)
+# ============================================================
+
+
+def test_spec_writer_tool_required_fields(server):
+    """T8.3: schema requires structured fields; no GitHub-issue concepts."""
+    schema = server.SPEC_WRITER_TOOL.inputSchema
+    assert set(schema["required"]) == {
+        "task_description", "acceptance_criteria", "upstream_contracts",
+        "output_files", "language",
+    }
+    props = schema["properties"]
+    assert "shared_constraints" in props
+    assert "risk_markers" in props
+    assert "task_id" in props
+    assert "issue_number" in props
+    assert "issue_title" not in props
+    assert "issue_body" not in props
+
+
+def test_spec_writer_tool_registered_with_underscore_name(server):
+    """MCP tool name uses underscore (spec_writer) per Tool.name conventions."""
+    assert server.SPEC_WRITER_TOOL.name == "spec_writer"
+    assert "spec_writer" in server.TOOLS_REGISTRY
+
+
+def test_spec_writer_rejects_missing_task_description(server):
+    result = asyncio.run(server._spec_writer_impl({
+        "acceptance_criteria": ["x"],
+        "upstream_contracts": "y",
+        "output_files": ["a.py"],
+        "language": "python",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "task_description" in err["message"]
+
+
+def test_spec_writer_rejects_empty_acceptance_criteria(server):
+    result = asyncio.run(server._spec_writer_impl({
+        "task_description": "do X",
+        "acceptance_criteria": [],
+        "upstream_contracts": "y",
+        "output_files": ["a.py"],
+        "language": "python",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "acceptance_criteria" in err["message"]
+
+
+def test_spec_writer_rejects_non_string_acceptance_criteria_entry(server):
+    result = asyncio.run(server._spec_writer_impl({
+        "task_description": "do X",
+        "acceptance_criteria": ["valid", 42],
+        "upstream_contracts": "y",
+        "output_files": ["a.py"],
+        "language": "python",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "acceptance_criteria" in err["message"]
+
+
+def test_spec_writer_rejects_missing_upstream_contracts(server):
+    result = asyncio.run(server._spec_writer_impl({
+        "task_description": "do X",
+        "acceptance_criteria": ["x"],
+        "output_files": ["a.py"],
+        "language": "python",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "upstream_contracts" in err["message"]
+
+
+def test_spec_writer_rejects_empty_output_files(server):
+    result = asyncio.run(server._spec_writer_impl({
+        "task_description": "do X",
+        "acceptance_criteria": ["x"],
+        "upstream_contracts": "y",
+        "output_files": [],
+        "language": "python",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "output_files" in err["message"]
+
+
+def test_spec_writer_rejects_missing_language(server):
+    result = asyncio.run(server._spec_writer_impl({
+        "task_description": "do X",
+        "acceptance_criteria": ["x"],
+        "upstream_contracts": "y",
+        "output_files": ["a.py"],
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "input_validation"
+    assert "language" in err["message"]
+
+
+def test_spec_writer_happy_path_uses_flash(server, monkeypatch):
+    """spec-writer is template-driven assembly — flash is sufficient."""
+    valid_output = {
+        "spec": "# Task X\n\nGoal: ...\n\nFiles: a.py",
+        "verification_checklist": ["verify a.py path exists in repo"],
+        "concerns": [],
+    }
+    mock_create = AsyncMock(
+        return_value=_mock_deepseek_response(json.dumps(valid_output))
+    )
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    result = asyncio.run(server._spec_writer_impl({
+        "task_description": "Add function foo to module a",
+        "acceptance_criteria": ["foo() returns 42", "foo() has a docstring"],
+        "upstream_contracts": "Module a currently has bar().",
+        "output_files": ["maestro/a.py"],
+        "language": "python",
+    }))
+    assert len(result) == 1
+    parsed = json.loads(result[0].text)
+    assert "_banner" in parsed
+    assert "spec-writer" in parsed["_banner"]
+    assert parsed["spec"] == valid_output["spec"]
+    assert parsed["verification_checklist"] == valid_output["verification_checklist"]
+    assert mock_create.call_args.kwargs["model"] == server.MODEL_FLASH
+
+    user_msg = mock_create.call_args.kwargs["messages"][1]["content"]
+    assert "Language: python" in user_msg
+    assert "Add function foo" in user_msg
+    assert "foo() returns 42" in user_msg
+    assert "maestro/a.py" in user_msg
+    assert "Module a currently has bar()." in user_msg
+
+
+def test_spec_writer_with_optional_fields(server, monkeypatch):
+    """shared_constraints + risk_markers reach the prompt when provided."""
+    valid_output = {
+        "spec": "spec text",
+        "verification_checklist": ["verify foo"],
+        "concerns": [],
+    }
+    mock_create = AsyncMock(
+        return_value=_mock_deepseek_response(json.dumps(valid_output))
+    )
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+
+    asyncio.run(server._spec_writer_impl({
+        "task_description": "X",
+        "acceptance_criteria": ["ac1"],
+        "upstream_contracts": "uc",
+        "output_files": ["a.py"],
+        "language": "python",
+        "shared_constraints": "no new deps allowed",
+        "risk_markers": ["conftest.py subprocess patch trap"],
+    }))
+
+    user_msg = mock_create.call_args.kwargs["messages"][1]["content"]
+    assert "no new deps allowed" in user_msg
+    assert "conftest.py subprocess patch trap" in user_msg
+
+
+def test_spec_writer_rejects_oversize_combined_input(server):
+    huge = "x" * 100_000
+    result = asyncio.run(server._spec_writer_impl({
+        "task_description": "X",
+        "acceptance_criteria": ["ac"],
+        "upstream_contracts": huge,
+        "output_files": ["a.py"],
+        "language": "python",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "document_too_large"
+
+
+def test_spec_writer_returns_error_when_output_missing_verification_checklist(server, monkeypatch):
+    bad_output = {"spec": "x", "concerns": []}
+    mock_create = AsyncMock(
+        return_value=_mock_deepseek_response(json.dumps(bad_output))
+    )
+    monkeypatch.setattr(server.deepseek.chat.completions, "create", mock_create)
+    result = asyncio.run(server._spec_writer_impl({
+        "task_description": "X", "acceptance_criteria": ["ac"],
+        "upstream_contracts": "uc", "output_files": ["a.py"], "language": "python",
+    }))
+    err = _parse_error(result)
+    assert err["error"] == "output_schema_invalid"
+    assert "verification_checklist" in err["message"]
+
+
+def test_validate_spec_writer_output_accepts_valid(server):
+    valid = {
+        "spec": "x",
+        "verification_checklist": ["check 1"],
+        "concerns": [],
+    }
+    assert server._validate_spec_writer_output(valid) is None
+
+
+def test_validate_spec_writer_output_rejects_empty_spec(server):
+    bad = {"spec": "", "verification_checklist": ["x"], "concerns": []}
+    err = server._validate_spec_writer_output(bad)
+    assert "spec is not a non-empty string" in err
+
+
+def test_validate_spec_writer_output_rejects_non_list_checklist(server):
+    bad = {"spec": "x", "verification_checklist": "not a list", "concerns": []}
+    err = server._validate_spec_writer_output(bad)
+    assert "verification_checklist is not a list" in err

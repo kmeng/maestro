@@ -154,8 +154,10 @@ def test_duplicate_member_alias_rejected_whitespace_insensitive():
     assert "Cody" in str(exc_info.value)
 
 
-def test_default_models_keys_match_role_ids():
-    assert set(DEFAULT_MODELS.keys()) == set(ROLE_IDS)
+def test_default_models_keys_cover_role_ids_and_shipped_tools():
+    """DEFAULT_MODELS must include an entry for every ROLE_ID and SHIPPED_TOOL_ID."""
+    from maestro.team import SHIPPED_TOOL_IDS
+    assert set(DEFAULT_MODELS.keys()) == set(ROLE_IDS) | set(SHIPPED_TOOL_IDS)
 
 
 def test_default_models_values_match_pattern():
@@ -170,4 +172,63 @@ def test_default_models_specific_values():
         "librarian": "deepseek-v4-flash",
         "reviewer": "deepseek-v4-pro",
         "scribe": "deepseek-v4-flash",
+        "verifier": "deepseek-v4-flash",
+        "spec-writer": "deepseek-v4-flash",
     }
+
+
+# T8.2 — SHIPPED_TOOL_IDS + verifier in DEFAULT_MODELS
+
+
+def test_shipped_tool_ids_includes_verifier():
+    from maestro.team import SHIPPED_TOOL_IDS
+    assert "verifier" in SHIPPED_TOOL_IDS
+
+
+def test_shipped_tool_ids_disjoint_from_role_ids():
+    """User-configurable roles and shipped tools must not overlap."""
+    from maestro.team import SHIPPED_TOOL_IDS
+    assert set(SHIPPED_TOOL_IDS).isdisjoint(set(ROLE_IDS))
+
+
+def test_default_models_includes_every_shipped_tool():
+    from maestro.team import SHIPPED_TOOL_IDS
+    for tool_id in SHIPPED_TOOL_IDS:
+        assert tool_id in DEFAULT_MODELS, f"DEFAULT_MODELS missing {tool_id}"
+
+
+def test_role_id_literal_includes_verifier():
+    """RoleId Literal extends to include verifier for dispatch lifecycle typing."""
+    from maestro.team.models import RoleId
+    import typing
+    args = typing.get_args(RoleId)
+    assert "verifier" in args
+
+
+def test_team_config_still_rejects_verifier_as_team_yaml_key():
+    """team.yaml requires exactly the 4 user roles; verifier must NOT be addable there."""
+    roles = _valid_roles_dict()
+    roles["verifier"] = {"member": "Val", "model": "deepseek-v4-flash"}
+    with pytest.raises(ValidationError, match="roles must contain exactly"):
+        TeamConfig(schema_version=1, roles=roles)
+
+
+def test_shipped_tool_ids_includes_spec_writer():
+    from maestro.team import SHIPPED_TOOL_IDS
+    assert "spec-writer" in SHIPPED_TOOL_IDS
+
+
+def test_role_id_literal_includes_spec_writer():
+    """T8.3: RoleId Literal extends to include spec-writer for dispatch typing."""
+    from maestro.team.models import RoleId
+    import typing
+    args = typing.get_args(RoleId)
+    assert "spec-writer" in args
+
+
+def test_team_config_still_rejects_spec_writer_as_team_yaml_key():
+    """team.yaml requires only the 4 user roles; spec-writer must NOT be addable."""
+    roles = _valid_roles_dict()
+    roles["spec-writer"] = {"member": "Sam", "model": "deepseek-v4-flash"}
+    with pytest.raises(ValidationError, match="roles must contain exactly"):
+        TeamConfig(schema_version=1, roles=roles)

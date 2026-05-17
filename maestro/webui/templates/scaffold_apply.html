@@ -1,30 +1,49 @@
-<h2>应用结果</h2>
-{% if rejected %}
-    <div class="error-banner">
-        <h3>计划被拒绝</h3>
-        <p>原因：前置检查失败</p>
-        <ul>
-            {% for check in rejected_checks %}<li>{{ check.message }}</li>{% endfor %}
-        </ul>
-    </div>
-{% else %}
+{% extends "_base.html" %}
+{% set nav_active = "scaffold" %}
+{% block title %}Scaffold result{% endblock %}
+{% block content %}
+  <h1 class="page-h1">应用结果</h1>
+  {% if rejected %}
+    <div class="page-sub" style="color: var(--red);">计划被拒绝</div>
+    <section class="panel" style="border-color: var(--red);">
+      <header class="panel-h">
+        <h2 class="panel-title" style="color: var(--red);">前置检查失败</h2>
+      </header>
+      <ul style="list-style: none; padding: 0; margin: 0;">
+        {% for check in rejected_checks %}
+        <li style="padding: 6px 0; font-size: 13px; color: var(--red);">✗ {{ check.message }}</li>
+        {% endfor %}
+      </ul>
+      <p style="margin-top: 16px;"><a href="/scaffold" class="btn">← 返回</a></p>
+    </section>
+  {% else %}
+    <div class="page-sub">成功 {{ succeeded }} 个文件 · 失败 {{ failed }} 个文件</div>
+    {% if succeeded > 0 %}<meta http-equiv="refresh" content="3;url=/wizard">{% endif %}
+    <section class="panel">
+      <table class="data-table data-table--dense">
+        <thead><tr><th>状态</th><th>文件</th><th>详情</th></tr></thead>
+        <tbody>
+          {% for ev in events %}
+          <tr>
+            <td>
+              {% if ev.type == 'file_succeeded' %}<span class="badge badge-ok">✓</span>
+              {% elif ev.type == 'file_failed' %}<span class="badge badge-fail">✗</span>
+              {% else %}<span class="badge badge-running">{{ ev.type }}</span>{% endif %}
+            </td>
+            <td class="mono">{{ ev.path }}</td>
+            <td>
+              {% if ev.type == 'file_succeeded' %}{{ ev.op }}
+              {% elif ev.type == 'file_failed' %}<span style="color: var(--red);">{{ ev.error }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
     {% if succeeded > 0 %}
-    <meta http-equiv="refresh" content="3;url=/wizard">
+    <p class="muted" style="font-size: 13px;">3 秒后跳转到团队配置… <a href="/wizard" class="btn btn-primary">立即配置团队</a></p>
     {% endif %}
-    <p>成功 {{ succeeded }} 个文件，失败 {{ failed }} 个文件</p>
-    {% if succeeded > 0 %}
-    <p class="autoredirect-hint">3 秒后跳转到团队配置...</p>
-    <a href="/wizard" class="button button-primary">立即配置团队</a>
-    {% endif %}
-    <ul>
-    {% for ev in events %}
-        <li class="{{ ev.type }}">
-            {{ ev.path }}
-            {% if ev.type == 'file_succeeded' %} — {{ ev.op }}
-            {% elif ev.type == 'file_failed' %} — {{ ev.error }}
-            {% endif %}
-        </li>
-    {% endfor %}
-    </ul>
-{% endif %}
-<a href="/scaffold">返回首页</a>
+    <p style="margin-top: 16px;"><a href="/scaffold" class="btn">← 返回脚手架</a></p>
+  {% endif %}
+{% endblock %}

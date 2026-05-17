@@ -1,49 +1,76 @@
-<h2>项目脚手架计划 — {{ path }}</h2>
+{% extends "_base.html" %}
+{% set nav_active = "scaffold" %}
+{% block title %}脚手架计划{% endblock %}
+{% block content %}
+  <h1 class="page-h1">脚手架计划</h1>
+  <div class="page-sub"><span class="mono">{{ path }}</span> · {{ mode }}</div>
 
-<section class="preflight-banner">
-    <h3>前置检查</h3>
-    <ul>
-    {% for check in preflight %}
-        <li class="{{ 'pass' if check.passed else 'fail' }}">
-            {{ '✓' if check.passed else '✗' }} {{ check.message }}
+  <section class="panel">
+    <header class="panel-h">
+      <h2 class="panel-title">前置检查</h2>
+      <div class="panel-meta">
+        {% if all_preflight_pass %}<span class="badge badge-ok">通过</span>
+        {% else %}<span class="badge badge-fail">失败</span>{% endif %}
+      </div>
+    </header>
+    <ul style="list-style: none; padding: 0; margin: 0;">
+      {% for check in preflight %}
+        <li style="padding: 6px 0; font-size: 13px; color: {% if check.passed %}var(--green){% else %}var(--red){% endif %};">
+          {{ '✓' if check.passed else '✗' }} {{ check.message }}
         </li>
-    {% endfor %}
+      {% endfor %}
     </ul>
-</section>
+  </section>
 
-<form action="/scaffold/apply" method="post">
-    <input type="hidden" name="path" value="{{ path }}">
-    <input type="hidden" name="mode" value="{{ mode }}">
-
-    <table class="plan-rows">
-        <thead><tr><th>选择</th><th>类型</th><th>文件</th><th>详情</th><th>展开</th></tr></thead>
+  <section class="panel">
+    <header class="panel-h">
+      <h2 class="panel-title">变更计划</h2>
+      <div class="panel-meta">{{ rows|length }} 个文件</div>
+    </header>
+    <form action="/scaffold/apply" method="post">
+      <input type="hidden" name="path" value="{{ path }}">
+      <input type="hidden" name="mode" value="{{ mode }}">
+      <table class="data-table data-table--dense">
+        <thead><tr><th></th><th>类型</th><th>文件</th><th>详情</th><th></th></tr></thead>
         <tbody>
-        {% for row in rows %}
-            <tr>
-                <td>
-                    {% if row.op in ['CREATE', 'APPEND_DELIMITED'] %}
-                        <input type="checkbox" name="accepted_paths" value="{{ row.path }}" checked>
-                    {% else %}
-                        —
-                    {% endif %}
-                </td>
-                <td class="op-{{ row.op|lower }}">{{ op_label(row.op) }}</td>
-                <td>{{ row.path }}</td>
-                <td>{{ row.detail }}</td>
-                <td>
-                    <button type="button"
-                            hx-get="/scaffold/plan-row/{{ row.path|urlencode }}?path={{ path|urlencode }}&mode={{ mode }}"
-                            hx-target="#drill-{{ loop.index }}">展开</button>
-                </td>
-            </tr>
-            <tr><td colspan="5" id="drill-{{ loop.index }}"></td></tr>
-        {% endfor %}
+          {% for row in rows %}
+          <tr>
+            <td style="width: 28px;">
+              {% if row.op in ['CREATE', 'APPEND_DELIMITED'] %}
+                <input type="checkbox" name="accepted_paths" value="{{ row.path }}" checked>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if row.op == 'CREATE' %}<span class="badge badge-create">+ {{ op_label(row.op) }}</span>
+              {% elif row.op == 'APPEND_DELIMITED' %}<span class="badge badge-overwrite">~ {{ op_label(row.op) }}</span>
+              {% elif row.op == 'NOOP' %}<span class="badge badge-skip">{{ op_label(row.op) }}</span>
+              {% elif row.op == 'CONFLICT' %}<span class="badge badge-fail">{{ op_label(row.op) }}</span>
+              {% else %}<span class="badge">{{ op_label(row.op) }}</span>{% endif %}
+            </td>
+            <td class="mono" style="font-size: 12.5px;">{{ row.path }}</td>
+            <td class="muted">{{ row.detail }}</td>
+            <td>
+              <button type="button" class="btn btn-ghost"
+                      hx-get="/scaffold/plan-row/{{ row.path|urlencode }}?path={{ path|urlencode }}&mode={{ mode }}"
+                      hx-target="#drill-{{ loop.index }}">展开</button>
+            </td>
+          </tr>
+          <tr><td colspan="5" id="drill-{{ loop.index }}"></td></tr>
+          {% endfor %}
         </tbody>
-    </table>
-
-    <button type="submit"
-            {% if not all_preflight_pass or has_required_conflict %}disabled{% endif %}>
-        {% if not all_preflight_pass %}前置检查未通过{% elif has_required_conflict %}请解决冲突{% else %}应用计划{% endif %}
-    </button>
-    <a href="/scaffold">返回</a>
-</form>
+      </table>
+      <div style="display: flex; gap: 8px; margin-top: 16px; align-items: center;">
+        <a href="/scaffold" class="btn">← 返回</a>
+        <div style="flex: 1;"></div>
+        <button type="submit" class="btn btn-primary"
+                {% if not all_preflight_pass or has_required_conflict %}disabled{% endif %}>
+          {% if not all_preflight_pass %}前置检查未通过
+          {% elif has_required_conflict %}请解决冲突
+          {% else %}应用计划{% endif %}
+        </button>
+      </div>
+    </form>
+  </section>
+{% endblock %}

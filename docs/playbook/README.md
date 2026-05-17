@@ -18,6 +18,8 @@ Pick the entry that matches the moment you are in:
 | Write tests, or fix a bug your worker introduced | [tests-are-coder-work.md](tests-are-coder-work.md) |
 | Send work to `reviewer` and want its verdict to be reliable | [reviewer-context.md](reviewer-context.md) |
 | Decide whether to TDD a feature with your workers | [tdd-with-workers.md](tdd-with-workers.md) |
+| Notice you are inlining the same upstream contract into a second spec | [contract-sheets.md](contract-sheets.md) |
+| Roll out a new worker role and want to validate it before trusting it | [contract-sheets.md](contract-sheets.md) (shadow-mode section) |
 | Debug a test failure that looks weird (especially in Python) | [common-traps.md](common-traps.md) |
 
 If you only have time to read one, read [dispatch-protocols.md](dispatch-protocols.md) —

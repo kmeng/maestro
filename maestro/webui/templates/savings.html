@@ -1,117 +1,118 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Maestro · Dispatch Savings</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 1100px; margin: 2em auto; padding: 0 1em; color: #222; }
-    h1 { margin-bottom: 0.25em; }
-    h2 { margin-top: 2em; font-size: 1.1em; color: #444; border-bottom: 1px solid #eee; padding-bottom: 0.25em; }
-    .headline { font-size: 1.05em; line-height: 1.55; margin: 0.5em 0 2em; color: #333; }
-    .headline strong { color: #2a8f3c; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 0.5em 0.75em; text-align: left; border-bottom: 1px solid #eee; }
-    th { background: #fafafa; font-weight: 600; }
-    td.num { text-align: right; font-variant-numeric: tabular-nums; }
-    .footnote { color: #888; font-size: 0.9em; margin-top: 0.5em; }
-    .footer { margin-top: 3em; padding-top: 1em; border-top: 1px solid #eee; color: #666; font-size: 0.9em; line-height: 1.7; }
-    .footer code { background: #f6f8fa; padding: 0.1em 0.4em; border-radius: 3px; font-size: 0.95em; }
-    .empty { color: #888; font-style: italic; padding: 1em 0; }
-  </style>
-</head>
-<body>
-  <h1>Dispatch Savings</h1>
-
-  <p class="headline">
-    {% if headline.count == 0 %}
-      No dispatches recorded yet.
-    {% else %}
-      <strong>{{ headline.count }}</strong> dispatch{{ "es" if headline.count != 1 else "" }}
-      across <strong>{{ headline.date_min }}</strong>
-      {% if headline.date_min != headline.date_max %} – <strong>{{ headline.date_max }}</strong>{% endif %}
-      · <strong>{{ "{:,}".format(headline.total_tokens) }}</strong> tokens
-      · saved <strong>${{ "%.2f"|format(headline.saved_usd) }}</strong>
-      vs Opus baseline ({{ "%.1f"|format(headline.saved_pct) }}%).
-    {% endif %}
-  </p>
-
-  <h2>Per-role</h2>
-  {% if per_role %}
-  <table>
-    <thead>
-      <tr>
-        <th>Role</th>
-        <th class="num">Dispatches</th>
-        <th class="num">Total tokens</th>
-        <th class="num">Avg tokens/call</th>
-        <th class="num">Avg wall (s)</th>
-        <th class="num">Worker $</th>
-        <th class="num">Est. Opus $</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for g in per_role %}
-      <tr>
-        <td>{{ g.tool|capitalize }}</td>
-        <td class="num">{{ g.stats.count }}</td>
-        <td class="num">{{ "{:,}".format(g.stats.total_tokens) }}</td>
-        <td class="num">{{ g.stats.avg_tokens_per_call }}</td>
-        <td class="num">{{ "%.1f"|format(g.stats.avg_wall) }}</td>
-        <td class="num">${{ "%.2f"|format(g.stats.total_worker_usd) }}</td>
-        <td class="num">${{ "%.2f"|format(g.stats.total_opus_usd) }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% if excluded_count and excluded_count > 0 %}
-  <p class="footnote">{{ excluded_count }} estimate row{{ "s" if excluded_count != 1 else "" }} excluded from per-role aggregates.</p>
-  {% endif %}
-  {% else %}
-  <p class="empty">No measured rows yet.</p>
-  {% endif %}
-
-  <h2>Per-time (UTC day)</h2>
-  {% if per_time %}
-  <table>
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th class="num">Dispatches</th>
-        <th class="num">Tokens</th>
-        <th class="num">Worker $</th>
-        <th class="num">Est. Opus $</th>
-        <th class="num">Saved</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for g in per_time %}
-      <tr>
-        <td>{{ g.date }}</td>
-        <td class="num">{{ g.stats.count }}</td>
-        <td class="num">{{ "{:,}".format(g.stats.total_tokens) }}</td>
-        <td class="num">${{ "%.2f"|format(g.stats.total_worker_usd) }}</td>
-        <td class="num">${{ "%.2f"|format(g.stats.total_opus_usd) }}</td>
-        <td class="num">${{ "%.2f"|format(g.stats.saved_usd) }} ({{ "%.1f"|format(g.stats.saved_pct) }}%)</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="empty">No dispatch days yet.</p>
-  {% endif %}
-
-  <div class="footer">
-    Reading from: <code>{{ log_path }}</code><br>
-    Last dispatch: {% if last_dispatch %}{{ last_dispatch }}{% else %}no dispatches yet{% endif %}<br>
-    Telemetry:
-    {% if telemetry_enabled %}
-      <strong>enabled</strong> · <a href="/docs/savings-methodology.md#7-disabling-telemetry">how to disable</a>
-    {% else %}
-      <strong>disabled</strong>
-    {% endif %}
-    {% if skipped_count and skipped_count > 0 %}
-    <br><span class="footnote">{{ skipped_count }} malformed row{{ "s" if skipped_count != 1 else "" }} skipped.</span>
-    {% endif %}
+{% extends "_base.html" %}
+{% set nav_active = "savings" %}
+{% block title %}成本节省{% endblock %}
+{% block content %}
+  <h1 class="page-h1">成本节省</h1>
+  <div class="page-sub">
+    {% if headline.count == 0 %}暂无调度记录
+    {% else %}{{ headline.count }} 次调度 · {{ headline.date_min }}{% if headline.date_min != headline.date_max %} → {{ headline.date_max }}{% endif %}{% endif %}
   </div>
-</body>
-</html>
+
+  {% if headline.count > 0 %}
+  <div class="kpis">
+    <div class="kpi">
+      <div class="kpi-label">总调度数</div>
+      <div class="kpi-value">{{ headline.count }}</div>
+      <div class="kpi-delta neutral">{{ "{:,}".format(headline.total_tokens) }} tokens</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Worker 实付</div>
+      <div class="kpi-value">${{ "%.2f"|format(headline.total_worker_usd) }}</div>
+      <div class="kpi-delta neutral">实际</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Opus 基线</div>
+      <div class="kpi-value">${{ "%.2f"|format(headline.total_opus_usd) }}</div>
+      <div class="kpi-delta neutral">若全部用旗舰</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">节省</div>
+      <div class="kpi-value">${{ "%.2f"|format(headline.saved_usd) }}</div>
+      <div class="kpi-delta up">减免 {{ "%.1f"|format(headline.saved_pct) }}%</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <section class="panel">
+    <header class="panel-h">
+      <h2 class="panel-title">按角色</h2>
+      <div class="panel-meta">
+        {% if excluded_count and excluded_count > 0 %}已排除 {{ excluded_count }} 条估算行{% endif %}
+      </div>
+    </header>
+    {% if per_role %}
+    <table class="data-table data-table--dense">
+      <thead>
+        <tr>
+          <th>角色</th>
+          <th style="text-align: right;">调度数</th>
+          <th style="text-align: right;">总 tokens</th>
+          <th style="text-align: right;">平均 tokens/次</th>
+          <th style="text-align: right;">平均耗时 (秒)</th>
+          <th style="text-align: right;">Worker $</th>
+          <th style="text-align: right;">Opus $（估）</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in per_role %}
+        <tr>
+          <td>{{ g.tool|capitalize }}</td>
+          <td class="mono" style="text-align: right;">{{ g.stats.count }}</td>
+          <td class="mono" style="text-align: right;">{{ "{:,}".format(g.stats.total_tokens) }}</td>
+          <td class="mono" style="text-align: right;">{{ g.stats.avg_tokens_per_call }}</td>
+          <td class="mono" style="text-align: right;">{{ "%.1f"|format(g.stats.avg_wall) }}</td>
+          <td class="mono" style="text-align: right;">${{ "%.2f"|format(g.stats.total_worker_usd) }}</td>
+          <td class="mono" style="text-align: right;">${{ "%.2f"|format(g.stats.total_opus_usd) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="muted">暂无可计量数据。</div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <header class="panel-h">
+      <h2 class="panel-title">按时间（UTC 日）</h2>
+      <div class="panel-meta">{{ per_time|length }} 天</div>
+    </header>
+    {% if per_time %}
+    <table class="data-table data-table--dense">
+      <thead>
+        <tr>
+          <th>日期</th>
+          <th style="text-align: right;">调度数</th>
+          <th style="text-align: right;">Tokens</th>
+          <th style="text-align: right;">Worker $</th>
+          <th style="text-align: right;">Opus $（估）</th>
+          <th style="text-align: right;">节省</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in per_time %}
+        <tr>
+          <td class="mono">{{ g.date }}</td>
+          <td class="mono" style="text-align: right;">{{ g.stats.count }}</td>
+          <td class="mono" style="text-align: right;">{{ "{:,}".format(g.stats.total_tokens) }}</td>
+          <td class="mono" style="text-align: right;">${{ "%.2f"|format(g.stats.total_worker_usd) }}</td>
+          <td class="mono" style="text-align: right;">${{ "%.2f"|format(g.stats.total_opus_usd) }}</td>
+          <td class="mono" style="text-align: right; color: var(--green);">${{ "%.2f"|format(g.stats.saved_usd) }}（{{ "%.1f"|format(g.stats.saved_pct) }}%）</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="muted">暂无调度日。</div>
+    {% endif %}
+  </section>
+
+  <div class="muted" style="font-size: 12px; padding: 12px 0; line-height: 1.7;">
+    数据来源：<span class="mono">{{ log_path }}</span><br>
+    最后一次调度：{% if last_dispatch %}{{ last_dispatch }}{% else %}暂无调度{% endif %}<br>
+    遥测：
+    {% if telemetry_enabled %}<strong style="color: var(--green);">已开启</strong> · <a href="/docs/savings-methodology.md#7-disabling-telemetry">如何关闭</a>
+    {% else %}<strong style="color: var(--orange);">已关闭</strong>{% endif %}
+    {% if skipped_count and skipped_count > 0 %}<br>{{ skipped_count }} 条异常行已跳过。{% endif %}
+  </div>
+{% endblock %}

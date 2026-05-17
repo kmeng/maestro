@@ -92,7 +92,9 @@ def test_problems_empty_renders_reassurance(client, tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
     response = client.get("/problems")
     assert response.status_code == 200
-    assert "暂无需要关注的问题" in response.text
+    # Redesigned empty-state (T9.10) uses "Nothing to flag" title + Chinese
+    # subtitle "团队运行良好". The legacy "暂无需要关注的问题" copy was retired.
+    assert "Nothing to flag" in response.text or "暂无需要关注的问题" in response.text
 
 
 def test_problems_failure_row_renders(client, tmp_path, monkeypatch):

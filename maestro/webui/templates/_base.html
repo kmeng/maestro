@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Maestro · {% block title %}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/maestro.css">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-dot"></div>
+      <div class="brand-name">Maestro</div>
+    </div>
+    <div class="brand-sub">v{{ version or '' }} · 本地</div>
+    <nav class="nav">
+      <a href="/" class="{% if nav_active == 'overview' %}active{% endif %}" {% if nav_active == 'overview' %}aria-current="page"{% endif %}>总览</a>
+      <a href="/team" class="{% if nav_active == 'team' %}active{% endif %}" {% if nav_active == 'team' %}aria-current="page"{% endif %}>团队</a>
+      <a href="/scaffold" class="{% if nav_active == 'scaffold' %}active{% endif %}" {% if nav_active == 'scaffold' %}aria-current="page"{% endif %}>脚手架</a>
+      <a href="/live" class="{% if nav_active == 'live' %}active{% endif %}" {% if nav_active == 'live' %}aria-current="page"{% endif %}>实时</a>
+      <a href="/history" class="{% if nav_active == 'history' %}active{% endif %}" {% if nav_active == 'history' %}aria-current="page"{% endif %}>历史</a>
+      <a href="/savings" class="{% if nav_active == 'savings' %}active{% endif %}" {% if nav_active == 'savings' %}aria-current="page"{% endif %}>成本节省</a>
+      <a href="/problems" class="{% if nav_active == 'problems' %}active{% endif %}" {% if nav_active == 'problems' %}aria-current="page"{% endif %}>问题</a>
+    </nav>
+    <div class="sidebar-spacer"></div>
+    <div class="sb-footer"><span class="dot-ok"></span> 运行正常</div>
+  </aside>
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+  <script src="/static/vendor/htmx.min.js" defer></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

@@ -1,24 +1,36 @@
-<h2>团队配置确认</h2>
-<p>请确认以下配置无误，然后保存。</p>
-<table>
-    <tr>
-        <th>角色</th>
-        <th>成员名</th>
-        <th>模型</th>
-    </tr>
-    {% for role in role_order %}
-    <tr>
+<div class="wizard-step" data-step="3">
+  <div class="wizard-progress" aria-label="Step 3 of 4">
+    <span class="wp-dot done"></span>
+    <span class="wp-line done"></span>
+    <span class="wp-dot done"></span>
+    <span class="wp-line done"></span>
+    <span class="wp-dot active"></span>
+    <span class="wp-line"></span>
+    <span class="wp-dot"></span>
+  </div>
+  <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">团队配置确认</h2>
+  <p class="muted" style="font-size: 13px; margin-bottom: 16px;">请确认以下配置无误，然后保存。</p>
+  <table class="data-table" style="margin-bottom: 16px;">
+    <thead><tr><th>角色</th><th>成员名</th><th>模型</th></tr></thead>
+    <tbody>
+      {% for role in role_order %}
+      <tr>
         <td>{{ role_titles[role] }}</td>
         <td>{{ values[role]['member'] }}</td>
-        <td>{{ values[role]['model'] }}</td>
-    </tr>
-    {% endfor %}
-</table>
-<form>
+        <td class="mono">{{ values[role]['model'] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <form>
     {% for role in role_order %}
     <input type="hidden" name="member_{{ role }}" value="{{ values[role]['member'] }}">
     <input type="hidden" name="model_{{ role }}" value="{{ values[role]['model'] }}">
     {% endfor %}
-    <button hx-post="/wizard/save" hx-include="closest form" hx-target="#wizard-container">保存</button>
-    <button hx-post="/wizard/step3" hx-include="closest form" hx-target="#wizard-container">返回修改</button>
-</form>
+    <div style="display: flex; gap: 8px;">
+      <button class="btn" hx-post="/wizard/step3" hx-include="closest form" hx-target="#wizard-container">← 返回修改</button>
+      <div style="flex: 1;"></div>
+      <button class="btn btn-primary" hx-post="/wizard/save" hx-include="closest form" hx-target="#wizard-container">保存</button>
+    </div>
+  </form>
+</div>
