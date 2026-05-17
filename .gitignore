@@ -49,3 +49,5 @@ coverage.xml
 
 # Distribution
 *.whl
+*.spec.lock
+.venv-build/
