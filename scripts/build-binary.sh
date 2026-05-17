@@ -47,7 +47,7 @@ fi
 
 echo "==> Verifying binary: --version"
 version_out=$("$binary" --version)
-expected_prefix="maestro 0.0.4"
+expected_prefix="maestro 0.1.0"
 if ! echo "$version_out" | grep -q "^$expected_prefix"; then
     echo "FAIL: expected '$expected_prefix' from --version, got '$version_out'"
     exit 1

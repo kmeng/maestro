@@ -160,7 +160,81 @@ This was the recursion point: Maestro using Maestro to build Maestro, with every
 
 ---
 
-## v0.0.4 — Workflow tooling & Web UI redesign (in progress)
+## v0.1.0 — First downloadable release
+
+**Date**: 2026-05-17
+**Phase**: Shippable — Maestro is now a native binary anyone can download and run
+**Branch development name**: v0.0.4 (rolled up under v0.1.0 at release)
+
+This is the first release a non-developer can actually use: download a single-file
+binary from GitHub Releases, run `maestro install`, restart Claude Code, see 6
+worker tools in `/mcp`. Three Epics shipped on this branch.
+
+| Epic | Focus | Closed |
+| --- | --- | --- |
+| Epic 8 (#78) | Workflow tooling — `verifier` + `spec-writer` roles, `librarian` `file_paths` mode, generic `scribe` schema, contract-sheets playbook | 2026-05-17 |
+| Epic 9 (#88) | Web UI all-pages redesign (Dashboard Cockpit) | 2026-05-16 |
+| Epic 10 (#105) | Native binary distribution (cc-switch-style ship form) | 2026-05-17 |
+
+### Epic 10 — Native binary distribution (closed 2026-05-17)
+
+The release-form transformation. v0.0.3 shipped as a git-clone + venv flow that
+was only realistic for developers. v0.1.0 ships as a 19MB single-file PyInstaller
+binary per OS that anyone can download, place on PATH, and register with Claude
+Code in one command.
+
+What shipped (6 sub-tasks):
+
+- **T10.1 (#106)** — CLI integration. `bootstrap/maestro_server.py` (2.5k LOC)
+  relocated to `maestro/mcp_server.py`. New `maestro` console-script with
+  subcommands `serve` / `webui` / `install` / `--version`. `pyproject.toml`
+  bumped 0.0.3 → 0.0.4 (→ 0.1.0 at release).
+- **T10.2 (#107)** — PyInstaller spec. `pyinstaller.spec` bundles entry +
+  webui templates/static + scaffold templates + hidden-imports for
+  uvicorn/pydantic/mcp/openai. `scripts/build-binary.sh` creates a clean
+  build venv and verifies. `docs/ops/binary-build.md` operator doc.
+  Local build produces `dist/maestro` at 19MB on macOS arm64.
+- **T10.3 (#108)** — GitHub Actions release matrix. Push of `v*` tag triggers
+  cross-OS build (macOS / Linux / Windows), uploads tarballs/zips to a new
+  GitHub Release. `workflow_dispatch` escape hatch for dry-run.
+- **T10.4 (#109)** — `maestro install` real implementation. Writes /
+  updates `~/.claude/mcp.json` with the maestro entry pointing at the
+  binary. Flags: `--force`, `--dry-run`, `--config-path`. Idempotent;
+  refuses to overwrite malformed existing JSON; preserves non-maestro
+  entries verbatim.
+- **T10.5 (#110)** — README install section rewritten (H3-protected own PR).
+  Per-OS download table, macOS Gatekeeper bypass, `maestro install` flow,
+  `/mcp` verify, upgrade pointer to `docs/ops/mcp-reload.md`.
+- **T10.6 (#111)** — `scripts/smoke-fresh-install.sh` end-to-end smoke
+  + post-release `verify` job in the release workflow. Tests:
+  download → extract → version → install → mcp.json correctness →
+  idempotency → MCP `tools/list` handshake returns all 6 worker tools.
+  **Local validation PASS** against the T10.2 build artifact.
+
+### Epic 8 — Workflow tooling (closed 2026-05-17)
+
+The orchestrator-side tooling Epic. Added the missing roles that the
+orchestrator was previously hand-doing.
+
+- **T8.1 (#79)** — `librarian` `file_paths: list[str]` multi-file mode.
+  Three-way XOR: `file_path` / `file_paths` / `document_text`.
+- **T8.2 (#80)** — `verifier` role for fact-checking spec → output drift.
+  `SHIPPED_TOOL_IDS` framework split (team-configurable roles vs
+  shipped-only infrastructure tools); `RoleId` Literal extended;
+  `TeamConfig` unchanged for backward compat.
+- **T8.3 (#81)** — `spec-writer` role. Mirrors verifier shape via the
+  same `SHIPPED_TOOL_IDS` extension.
+- **T8.4 (#82)** — `docs/playbook/contract-sheets.md` playbook (6
+  sections incl. shadow-mode trial protocol with 4 phases).
+- **T8.6 (#83)** — out-of-repo memory updates: size-carve-out
+  exception + contract-sheet-reference exception.
+- **T8.7 (#74 / #84)** — `CLAUDE.md` sanitization (trial wave used all
+  three new tools end-to-end — spec_writer + coder + verifier +
+  reviewer + scribe).
+- **T8.8 (#85)** — scribe schema generic-ification. Required input
+  shrunk from `{diff, issue_number, issue_title, issue_body,
+  convention}` to `{diff, purpose}`. Adds `style` enum and
+  `audience_context`. Folds #72.
 
 ### Epic 9 — Web UI all-pages redesign (closed 2026-05-16)
 

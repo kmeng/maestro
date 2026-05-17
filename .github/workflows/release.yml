@@ -90,7 +90,7 @@ jobs:
             BIN=dist/maestro
           fi
           $BIN --version
-          $BIN --version 2>&1 | grep -q "maestro 0.0.4" || {
+          $BIN --version 2>&1 | grep -q "maestro 0.1.0" || {
             echo "ERROR: binary produced unexpected version output"
             exit 1
           }
