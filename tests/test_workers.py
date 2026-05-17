@@ -1,5 +1,5 @@
 """
-Tests for Maestro's worker roles in bootstrap/maestro_server.py.
+Tests for Maestro's worker roles in maestro/mcp_server.py.
 
 Covers:
   - tool registration (TOOLS_REGISTRY contents)
@@ -23,19 +23,15 @@ import pytest
 
 
 # ============================================================
-# Module loading — bootstrap/maestro_server.py is not a package,
-# so we load it via importlib once and share across tests.
+# Module loading — T10.1 relocated the server into the maestro package
+# so it is now a regular import. The fixture is kept for test API
+# stability (existing tests parameterise on `server`).
 # ============================================================
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_BOOTSTRAP = _REPO_ROOT / "bootstrap" / "maestro_server.py"
 
 
 @pytest.fixture(scope="module")
 def server():
-    spec = importlib.util.spec_from_file_location("maestro_server", _BOOTSTRAP)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    import maestro.mcp_server as module
     return module
 
 

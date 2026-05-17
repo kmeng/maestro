@@ -24,7 +24,7 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 
 .venv/bin/python -c "
 import importlib.util
-spec = importlib.util.spec_from_file_location('m', 'bootstrap/maestro_server.py')
+spec = importlib.util.spec_from_file_location('m', 'maestro/mcp_server.py')
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 expected = {'coder','librarian','reviewer','scribe','verifier','spec_writer','job_status'}
 assert set(m.TOOLS_REGISTRY.keys()) == expected, f'got {set(m.TOOLS_REGISTRY.keys())}'
@@ -37,7 +37,7 @@ pass "TOOLS_REGISTRY has six roles + job_status"
 
 .venv/bin/python -c "
 import importlib.util
-spec = importlib.util.spec_from_file_location('m', 'bootstrap/maestro_server.py')
+spec = importlib.util.spec_from_file_location('m', 'maestro/mcp_server.py')
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 props = m.LIBRARIAN_TOOL.inputSchema['properties']
 assert 'file_paths' in props
@@ -54,7 +54,7 @@ pass "librarian.inputSchema has file_paths array field (optional, XOR at handler
 
 .venv/bin/python -c "
 import importlib.util
-spec = importlib.util.spec_from_file_location('m', 'bootstrap/maestro_server.py')
+spec = importlib.util.spec_from_file_location('m', 'maestro/mcp_server.py')
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 schema = m.VERIFIER_TOOL.inputSchema
 assert schema['required'] == ['claims']
@@ -70,7 +70,7 @@ pass "verifier.inputSchema required=[claims]; properties cover claims+file_paths
 
 .venv/bin/python -c "
 import importlib.util
-spec = importlib.util.spec_from_file_location('m', 'bootstrap/maestro_server.py')
+spec = importlib.util.spec_from_file_location('m', 'maestro/mcp_server.py')
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 schema = m.SPEC_WRITER_TOOL.inputSchema
 required = set(schema['required'])
@@ -89,7 +89,7 @@ pass "spec_writer.inputSchema required = task_description/acceptance_criteria/up
 
 .venv/bin/python -c "
 import importlib.util
-spec = importlib.util.spec_from_file_location('m', 'bootstrap/maestro_server.py')
+spec = importlib.util.spec_from_file_location('m', 'maestro/mcp_server.py')
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 required = set(m.SCRIBE_TOOL.inputSchema['required'])
 assert required == {'diff', 'purpose'}, f'got {required}'
@@ -151,7 +151,7 @@ pass "render_savings shows v + w columns for verifier + spec-writer"
 
 .venv/bin/python -c "
 import asyncio, json, importlib.util, tempfile, os
-spec = importlib.util.spec_from_file_location('m', 'bootstrap/maestro_server.py')
+spec = importlib.util.spec_from_file_location('m', 'maestro/mcp_server.py')
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 with tempfile.TemporaryDirectory() as d:
     a = os.path.join(d, 'a.md'); open(a,'w').write('x'*50000)
@@ -168,7 +168,7 @@ pass "librarian rejects combined file_paths > MAX_DOCUMENT_CHARS"
 
 .venv/bin/python -c "
 import asyncio, json, importlib.util
-spec = importlib.util.spec_from_file_location('m', 'bootstrap/maestro_server.py')
+spec = importlib.util.spec_from_file_location('m', 'maestro/mcp_server.py')
 mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
 # verifier rejects no claims
 r = asyncio.run(mod._verifier_impl({'document_text':'x'}))

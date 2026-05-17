@@ -19,7 +19,7 @@ import pytest
 
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_BOOTSTRAP = _REPO_ROOT / "bootstrap" / "maestro_server.py"
+_BOOTSTRAP = _REPO_ROOT / "maestro" / "mcp_server.py"
 
 
 @pytest.fixture(scope="function")
