@@ -164,3 +164,23 @@ jobs:
           # Artifacts were downloaded into directories named after the artifact_name.
           # Each directory contains exactly one binary whose name starts with 'maestro-'.
           gh release upload "$TAG" */maestro-*
+
+  verify:
+    name: Smoke-test released artifact on ${{ matrix.os }}
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]  # Windows skipped per smoke script
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository at tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - name: Run fresh-install smoke
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAESTRO_GITHUB_REPO: ${{ github.repository }}
+        run: bash scripts/smoke-fresh-install.sh
