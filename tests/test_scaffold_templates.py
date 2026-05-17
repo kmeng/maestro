@@ -1,6 +1,8 @@
 """Unit tests for scaffolding template renderers (T2.4)."""
 from __future__ import annotations
 
+import pytest
+
 from maestro.scaffold.templates import (
     render_claude_md_section_body,
     render_claude_md_standalone,
@@ -89,3 +91,23 @@ def test_all_renders_use_lf_line_endings():
         render_maestro_gitignore,
     ):
         assert b"\r" not in render()
+
+
+# T8.7 / #74 — sanitization helper tests
+
+
+def test_validate_section_body_rejects_start_marker():
+    from maestro.scaffold.templates import _validate_section_body
+    with pytest.raises(ValueError, match="start-marker prefix"):
+        _validate_section_body("some text <!-- maestro:start v=1 --> more")
+
+
+def test_validate_section_body_rejects_end_marker():
+    from maestro.scaffold.templates import _validate_section_body
+    with pytest.raises(ValueError, match="end-marker prefix"):
+        _validate_section_body("some text <!-- maestro:end v=1 --> more")
+
+
+def test_validate_section_body_accepts_benign_body():
+    from maestro.scaffold.templates import _validate_section_body
+    _validate_section_body("benign text with no markers")

@@ -32,6 +32,28 @@ def _read_template(name: str) -> str:
     return raw.replace("\r\n", "\n").replace("\r", "\n")
 
 
+def _validate_section_body(body: str) -> None:
+    """Raise ValueError if body contains forbidden marker prefixes.
+
+    The forbidden literals are the start/end marker prefixes the
+    scaffolding engine uses to delimit Maestro's CLAUDE.md section.
+    If body content ever contains them, downstream parsers would
+    misidentify section boundaries. See issue #74.
+    """
+    start_marker_prefix = "<!-- maestro:start v="
+    end_marker_prefix = "<!-- maestro:end v="
+    if start_marker_prefix in body:
+        raise ValueError(
+            f"Forbidden start-marker prefix found in section body: "
+            f"'{start_marker_prefix}'"
+        )
+    if end_marker_prefix in body:
+        raise ValueError(
+            f"Forbidden end-marker prefix found in section body: "
+            f"'{end_marker_prefix}'"
+        )
+
+
 def render_claude_md_section_body(
     section_version: int = CURRENT_SECTION_VERSION,
 ) -> bytes:
@@ -45,11 +67,17 @@ def render_claude_md_section_body(
     is the same across versions in v0.0.3). It exists so future
     Maestro releases can produce different bodies for different
     delimiter versions.
+
+    Calls :func:`_validate_section_body` on the read template content
+    as defense-in-depth — see issue #74. The packaged template is
+    sanitization-clean so this is a no-op in v0.0.3.
     """
     # v0.0.3 ships v=1 only; the body is the same regardless of version
     # argument. Parameter accepted for forward compatibility.
     _ = section_version
-    return _read_template("claude_md_maestro_section.md").encode("utf-8")
+    body_str = _read_template("claude_md_maestro_section.md")
+    _validate_section_body(body_str)
+    return body_str.encode("utf-8")
 
 
 def render_claude_md_standalone(
