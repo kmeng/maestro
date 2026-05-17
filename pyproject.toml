@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "maestro"
-version = "0.0.3"
+version = "0.0.4"
 description = "Maestro — orchestrates a heterogeneous AI software team via MCP."
 requires-python = ">=3.10"
 readme = "README.md"
@@ -27,6 +27,7 @@ dev = [
 asyncio_mode = "strict"
 
 [project.scripts]
+maestro = "maestro.cli.main:main"
 maestro-webui = "maestro.webui.launcher:main"
 
 [tool.setuptools.packages.find]

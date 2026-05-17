@@ -295,8 +295,8 @@ echo "MAESTRO_FAKE_VAR=1" > "$V002_DIR/.env"
 
 OUTPUT12=$(DEEPSEEK_API_KEY=fake-key-for-smoke MAESTRO_PROJECT_ROOT="$V002_DIR" \
     python3 -c "
-import bootstrap.maestro_server as m
-assert hasattr(m, 'app'), 'bootstrap.maestro_server.app attribute missing'
+import maestro.mcp_server as m
+assert hasattr(m, 'app'), 'maestro.mcp_server.app attribute missing'
 print('OK')
 " 2>&1) || true
 echo "$OUTPUT12" | grep -q "^OK$" || fail "Check 12 bootstrap import failed (got: $OUTPUT12)"
