@@ -219,21 +219,21 @@ Every step shows what was dispatched, what came back, what it cost, and how the 
 
 ## Project status
 
-Maestro is in early development. The MVP (Phase 1) is functional and used daily by the maintainers; production-readiness and broader provider support are in progress.
+Maestro is past MVP and used daily by the maintainers. v0.0.4 (the current release branch) adds a Web UI cockpit and two new worker roles (`verifier`, `spec-writer`); v0.0.3 (the foundation release) shipped the four core roles, structured audit logging, and the auto-review quality gate.
 
-- ✅ MCP server with 4 core roles
+- ✅ MCP server with 6 worker roles (`coder`, `librarian`, `reviewer`, `scribe`, `verifier`, `spec-writer`)
 - ✅ DeepSeek (v4-pro / v4-flash) providers; Anthropic + Qwen pluggable
 - ✅ Structured reasoning + concerns from every worker
-- ✅ Audit logging to JSONL
-- 🔄 Test-driven dispatch (in progress)
-- 🔄 Auto-review quality gate (in progress)
-- 📋 Confidence escalation
-- 📋 Cost dashboard CLI (`maestro stats`)
+- ✅ Audit logging to JSONL + per-dispatch cost telemetry
+- ✅ Auto-review quality gate (reviewer is a mandatory pass before merge)
+- ✅ Web UI cockpit (`/`, `/team`, `/wizard`, `/scaffold`, `/live`, `/history`, `/savings`, `/problems`) — replaces the CLI cost dashboard
+- 🔄 Packaging & distribution (pip / homebrew / docker — scheduled for v0.0.5)
+- 📋 Confidence escalation (model self-selects based on task complexity)
 - 📋 Local model support via Ollama
 - 📋 Role marketplace (community-contributed roles)
 - 📋 Benchmarks against SWE-bench subset
 
-See the [roadmap](./ROADMAP.md) for details.
+Each release is documented in [`docs/journal/`](./docs/journal/); end-of-epic summaries with worker-level cost telemetry land in [`docs/savings.md`](./docs/savings.md).
 
 ---
 
