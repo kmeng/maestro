@@ -29,13 +29,6 @@ def test_version_flag_matches_pyproject(capsys):
     assert pkg_version in out
 
 
-def test_install_stub_prints_to_stderr_and_exits_nonzero(capsys):
-    code, out, err = run_cli(["install"], capsys)
-    assert code == 1
-    assert out == ""
-    assert err.strip() == "maestro install: not yet implemented (planned in T10.4)"
-
-
 def test_no_args_prints_help_to_stderr_and_exits_nonzero(capsys):
     code, _, err = run_cli([], capsys)
     assert code == 1

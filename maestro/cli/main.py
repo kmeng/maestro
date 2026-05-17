@@ -1,5 +1,6 @@
 import argparse
 import sys
+from pathlib import Path
 from typing import Optional, Sequence
 
 
@@ -17,12 +18,15 @@ def _cmd_webui(forwarded_argv: list) -> int:
     return webui_main(forwarded_argv)
 
 
-def _cmd_install(_args: argparse.Namespace) -> int:
-    print(
-        "maestro install: not yet implemented (planned in T10.4)",
-        file=sys.stderr,
+def _cmd_install(args: argparse.Namespace) -> int:
+    from maestro.cli.install import install
+
+    config_path = Path(args.config_path) if args.config_path else None
+    return install(
+        config_path=config_path,
+        force=args.force,
+        dry_run=args.dry_run,
     )
-    return 1
 
 
 def _cmd_version() -> int:
@@ -59,8 +63,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     # No REMAINDER argument; unknown args will be captured via parse_known_args.
 
-    sub.add_parser(
+    install_p = sub.add_parser(
         "install", help="Register Maestro with Claude Code (writes ~/.claude/mcp.json)."
+    )
+    install_p.add_argument(
+        "--force", action="store_true",
+        help="Overwrite an existing maestro entry without prompting.",
+    )
+    install_p.add_argument(
+        "--config-path", default=None,
+        help="Override target config path (default: ~/.claude/mcp.json).",
+    )
+    install_p.add_argument(
+        "--dry-run", action="store_true",
+        help="Show what would change without writing the file.",
     )
 
     return parser
