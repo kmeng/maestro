@@ -85,7 +85,7 @@ imports, also add it to `hiddenimports` in `pyinstaller.spec`.
 
 ## Manual full verification
 
-The smoke test does **not** check the MCP or web servers.  You should
+The build-time smoke does **not** check the MCP or web servers.  You should
 manually run:
 
 ```bash
@@ -95,3 +95,17 @@ dist/maestro webui        # web UI (terminate after startup)
 
 Both commands must start without `ModuleNotFoundError` or missing
 template errors.
+
+## Fresh-install smoke test
+
+`scripts/smoke-fresh-install.sh` exercises the full download → extract →
+`maestro install` → MCP `tools/list` handshake path against a release
+artifact (idempotent; isolated `HOME`; no real provider calls). Run it
+after a build or release:
+
+```bash
+MAESTRO_ARTIFACT_PATH=./dist/maestro-macos-arm64.tar.gz bash scripts/smoke-fresh-install.sh
+```
+
+Options, env vars, and the full check list:
+[`scripts/smoke-fresh-install.README.md`](../../scripts/smoke-fresh-install.README.md).
