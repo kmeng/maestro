@@ -14,8 +14,9 @@ Before responding to the user's first substantive request in a fresh session, yo
 1. Read the most recent file in `docs/journal/` to learn what the previous session left undone.
 2. Run `gh issue list --state open` to see active work.
 3. Run `git status` and `git branch --show-current` to verify the working tree is in a clean, expected state.
-4. Synthesize: state where the project sits, what is open, and what you understand the user is now asking. Then ask the user to confirm or correct.
-5. Wait for user confirmation before taking any action that creates commits, opens issues / PRs, or pushes to remote.
+4. Run `git branch -r | grep -E 'v[0-9]+\.[0-9]+'` to confirm a current dev branch exists on remote. If `main` is the last shipped version and no next dev branch exists, surface this in the synthesis and ask whether to create one **before** taking any branch-creating action. Rationale: feature work routes through the current dev branch, never directly to `main`; a missing dev branch after a release is the gap that causes drift to `main` (see `feedback_branch_workflow`).
+5. Synthesize: state where the project sits, what is open, and what you understand the user is now asking. Then ask the user to confirm or correct.
+6. Wait for user confirmation before taking any action that creates commits, opens issues / PRs, or pushes to remote.
 
 Compression is allowed when the user's request is read-only or trivial (e.g., "what does X do?"); collapse the synthesis to one sentence.
 
