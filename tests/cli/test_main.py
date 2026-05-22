@@ -1,7 +1,6 @@
 """Tests for maestro/cli/main.py — subcommand routing + version."""
 
 import re
-import sys
 from typing import List
 
 import pytest

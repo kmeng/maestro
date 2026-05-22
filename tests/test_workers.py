@@ -14,9 +14,7 @@ All DeepSeek API calls are mocked; tests run offline.
 """
 
 import asyncio
-import importlib.util
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

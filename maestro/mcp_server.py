@@ -38,6 +38,9 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
+from maestro.team.resolve import ResolveRefuse, resolve_role_model
+from maestro.dispatcher import run as dispatcher_run
+
 # ============================================================
 # T10.1: relocated from bootstrap/maestro_server.py into the maestro package.
 # As a package member we no longer need to manipulate sys.path — the
@@ -508,10 +511,6 @@ async def job_status_handler(arguments: dict) -> list[TextContent]:
 # T3.1 ships proper Pydantic event models that supersede this format.
 # ============================================================
 
-from maestro.team.resolve import ResolveOk, ResolveRefuse, resolve_role_model
-from maestro.dispatcher import run as dispatcher_run
-
-
 def _emit_team_event(event: dict) -> None:
     """Append a team-resolution event to the dispatch log directory.
 
@@ -940,11 +939,11 @@ def _validate_librarian_output(data: Any) -> Optional[str]:
     for i, item in enumerate(hc):
         if not isinstance(item, dict):
             return f"hard_constraints[{i}] is not a dict"
-        for field in ("quote", "section"):
-            if field not in item:
-                return f"hard_constraints[{i}].{field} is missing"
-            if not isinstance(item[field], str) or not item[field]:
-                return f"hard_constraints[{i}].{field} is not a non-empty string"
+        for key in ("quote", "section"):
+            if key not in item:
+                return f"hard_constraints[{i}].{key} is missing"
+            if not isinstance(item[key], str) or not item[key]:
+                return f"hard_constraints[{i}].{key} is not a non-empty string"
 
     if not isinstance(data["summary"], str):
         return "summary is not a string"
@@ -1281,17 +1280,17 @@ def _validate_reviewer_output(data: Any) -> Optional[str]:
     for i, item in enumerate(findings):
         if not isinstance(item, dict):
             return f"findings[{i}] is not a dict"
-        for field in ("severity", "location", "description"):
-            if field not in item:
-                return f"findings[{i}].{field} is missing"
+        for key in ("severity", "location", "description"):
+            if key not in item:
+                return f"findings[{i}].{key} is missing"
         if item["severity"] not in _REVIEWER_SEVERITIES:
             return (
                 f"findings[{i}].severity {item['severity']!r} not in allowed "
                 f"values {_REVIEWER_SEVERITIES}"
             )
-        for field in ("location", "description"):
-            if not isinstance(item[field], str) or not item[field]:
-                return f"findings[{i}].{field} is not a non-empty string"
+        for key in ("location", "description"):
+            if not isinstance(item[key], str) or not item[key]:
+                return f"findings[{i}].{key} is not a non-empty string"
 
     missed = data["missed_requirements"]
     if not isinstance(missed, list):
@@ -1836,11 +1835,11 @@ def _validate_verifier_output(data: Any) -> Optional[str]:
     for i, item in enumerate(verifications):
         if not isinstance(item, dict):
             return f"verifications[{i}] is not a dict"
-        for field in ("claim", "status", "actual", "evidence"):
-            if field not in item:
-                return f"verifications[{i}].{field} is missing"
-            if not isinstance(item[field], str):
-                return f"verifications[{i}].{field} is not a string"
+        for key in ("claim", "status", "actual", "evidence"):
+            if key not in item:
+                return f"verifications[{i}].{key} is missing"
+            if not isinstance(item[key], str):
+                return f"verifications[{i}].{key} is not a string"
         if item["status"] not in allowed_statuses:
             return (
                 f"verifications[{i}].status is {item['status']!r}; "

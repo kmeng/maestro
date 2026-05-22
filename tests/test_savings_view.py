@@ -14,7 +14,6 @@ from maestro.savings import (
     compute_costs,
     filter_superseded,
     group_by_role,
-    group_by_time,
     read_rows,
 )
 from maestro.webui import app

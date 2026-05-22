@@ -16,8 +16,6 @@ from maestro.dispatch_log.events import (
     DispatchStartEvent,
 )
 from maestro.webui.history_view import (
-    HistoryRow,
-    _build_row,
     _fold_events,
     router as history_router,
 )

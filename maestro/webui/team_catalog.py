@@ -6,9 +6,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
 
 from maestro.team import (
-    DEFAULT_MODELS,
     ROLE_IDS,
-    RoleEntry,
     TeamConfig,
     TeamConfigInvalid,
     load_team_config,

@@ -10,7 +10,6 @@ from maestro.team import (
     ROLE_IDS,
     RoleEntry,
     TeamConfig,
-    TeamConfigInvalid,
     load_team_config,
     save_team_config,
 )

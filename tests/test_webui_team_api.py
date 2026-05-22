@@ -1,6 +1,5 @@
 """Tests for the team.yaml HTTP API endpoints."""
 
-from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
