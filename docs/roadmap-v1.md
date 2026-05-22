@@ -45,7 +45,7 @@ issues to avoid issue-tracker noise.
 
 | Item | Status | Notes |
 | --- | --- | --- |
-| Phase B CI quality gate (ruff + pytest on push/PR) | open as #122 | Phase B from the Epic 10 close. (NB: #104 was the fresh-install smoke script — done — not this; earlier drafts mis-cited it here.) |
+| Phase B CI quality gate (ruff + pytest on push/PR) | ✅ done (#122, 2026-05-22) | Green on v1.0. Caught 3 latent issues on first run (undeclared `python-multipart`/`httpx`, non-hermetic API key). (NB: #104 was the fresh-install smoke script — done — not this; earlier drafts mis-cited it here.) |
 | `docs/known-issues.md` creation + audit | not started | Governance referenced it; file doesn't exist |
 | CI actions Node 20 deprecation upgrade | identified | Pre-2026-06 deadline; non-blocking until then |
 | Reviewer-payload contract-sheet adoption (cost lever) | partial since T8.4 | Per ADR-0013 D3: make default; document playbook; update memory `feedback_worker_payload_completeness` |
