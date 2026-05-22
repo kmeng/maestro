@@ -55,6 +55,7 @@ _STATIC_DIR = Path(__file__).parent / "static"
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+templates.env.globals["version"] = maestro.__version__
 
 # Vendored htmx + future static assets; no CDN at runtime per ADR-0002
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
