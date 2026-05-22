@@ -70,6 +70,9 @@ jobs:
 - `python-multipart` — required at import time to register the webui FastAPI form route (so `import maestro.webui` fails without it). A genuine **runtime** dep; added to pyproject `dependencies`. (Latent shipping gap: a clean `pip install maestro` + `maestro webui` would have failed; the release smoke doesn't exercise webui forms so it never caught this.)
 - `httpx` — required by `fastapi.testclient.TestClient` in the webui tests; test-only, added to `[dev]`.
 - `mcp`, `openai` — the MCP server's core deps live in `bootstrap/requirements.txt` (a deliberate split from pyproject, per the binary-build flow), so the CI install step mirrors `release.yml` and installs them too.
+- `DEEPSEEK_API_KEY` — `maestro/mcp_server.py` reads it at import; the suite passes locally only because a repo `.env` (gitignored) supplies it. CI has no `.env`, so the job sets a **dummy** `DEEPSEEK_API_KEY` (tests mock the client, no real calls — same pattern as `scripts/smoke-fresh-install.sh`). The suite was verified green in a clean venv with `.env` removed + a dummy key, exactly replicating CI.
+
+**Process lesson**: the gate's value showed up immediately, but it also means a gate must be validated in a *clean* environment (fresh venv, no `.env`, no ambient secrets) before declaring done — the dev's machine hides undeclared deps and ambient config. Two red runs were spent rediscovering this; future CI work should clean-room-verify locally first.
 
 - **Python 3.11** to match `release.yml`. (A `[3.10, 3.11]` matrix to test the `requires-python` floor is a possible follow-up; single version keeps v1.0 cost/scope down.)
 - Action versions `checkout@v4` / `setup-python@v5` — current (no Node-deprecation issue; that roadmap item concerns other repos/workflows, not this one).

@@ -18,6 +18,10 @@ jobs:
   quality:
     name: ruff + pytest
     runs-on: ubuntu-latest
+    env:
+      # The MCP server reads DEEPSEEK_API_KEY at import; tests mock the client and
+      # make no real calls, so a dummy value is enough (same pattern as the smoke script).
+      DEEPSEEK_API_KEY: dummy-key-for-ci-no-real-calls
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
