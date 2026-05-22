@@ -2,6 +2,11 @@ import jinja2
 from pathlib import Path
 import re
 
+import maestro
+from fastapi.testclient import TestClient
+
+from maestro.webui import app
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BASE_TEMPLATE_PATH = PROJECT_ROOT / "maestro" / "webui" / "templates" / "_base.html"
 
@@ -55,3 +60,10 @@ def test_base_template_marks_active_nav():
     assert len(active_tags) == 1, f"Expected exactly 1 active link, got {len(active_tags)}: {active_tags}"
     assert 'href="/team"' in active_tags[0]
     assert 'class="active"' in active_tags[0]
+
+
+def test_version_shown_on_non_index_pages():
+    client = TestClient(app)
+    # /scaffold is a non-index page that extends _base.html
+    body = client.get("/scaffold").text
+    assert f"v{maestro.__version__}" in body
