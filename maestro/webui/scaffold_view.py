@@ -35,7 +35,7 @@ from maestro.scaffold.io import (
 from maestro.scaffold.operations import Operation, PlanRow
 from maestro.scaffold.preflight import run_preflight
 from maestro.webui.scaffold_api import _build_filespecs, _read_existing
-from maestro.registry.projects import upsert_project
+from maestro.registry.projects import upsert_project, read_registry
 
 router = APIRouter()
 
@@ -114,10 +114,19 @@ def _events_to_dicts(events: Iterable) -> list[dict]:
 
 @router.get("/scaffold", response_class=HTMLResponse)
 async def picker(request: Request):
-    """Render the project picker form."""
+    """Render the project picker form, listing already-applied projects."""
     # Late import to avoid circular: webui/__init__.py imports scaffold_view.
     from maestro.webui import templates
-    return templates.TemplateResponse(request, "scaffold_picker.html", {})
+    projects = [
+        {
+            "path": str(entry.path),
+            "last_opened_display": entry.last_opened_at.strftime("%Y-%m-%d %H:%M UTC"),
+        }
+        for entry in read_registry()
+    ]
+    return templates.TemplateResponse(
+        request, "scaffold_picker.html", {"projects": projects}
+    )
 
 
 @router.get("/scaffold/plan", response_class=HTMLResponse)

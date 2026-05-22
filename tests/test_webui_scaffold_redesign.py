@@ -29,14 +29,19 @@ def test_scaffold_lists_applied_projects(monkeypatch):
             path=Path("/tmp/proj-beta"),
             last_opened_at=datetime(2026, 5, 1, 9, 0, tzinfo=timezone.utc),
         ),
+        ProjectEntry(
+            path=Path("/tmp/proj gamma"),  # space → exercises urlencode
+            last_opened_at=datetime(2026, 4, 1, 9, 0, tzinfo=timezone.utc),
+        ),
     ]
     monkeypatch.setattr("maestro.webui.scaffold_view.read_registry", lambda: entries)
     body = TestClient(app).get("/scaffold").text
     assert "/tmp/proj-alpha" in body
     assert "/tmp/proj-beta" in body
-    # take_over plan link present; path is urlencoded → slashes become %2F.
-    assert "mode=take_over" in body
-    assert "%2Ftmp%2Fproj-alpha" in body
+    # take_over plan link present (Jinja urlencode keeps slashes).
+    assert "path=/tmp/proj-alpha&mode=take_over" in body
+    # urlencode is applied: a space in the path becomes %20 in the href.
+    assert "/tmp/proj%20gamma" in body
 
 
 def test_scaffold_empty_registry_shows_placeholder(monkeypatch):
