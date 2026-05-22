@@ -15,6 +15,7 @@ dependencies = [
     "jinja2",
     "pyyaml",
     "pydantic>=2",
+    "python-multipart",  # required to import maestro.webui (FastAPI form route registration)
 ]
 
 [project.optional-dependencies]
@@ -22,6 +23,7 @@ dev = [
     "pytest",
     "pytest-asyncio>=0.21",
     "ruff==0.15.14",
+    "httpx",  # required by fastapi.testclient.TestClient in the webui tests
 ]
 
 [tool.pytest.ini_options]

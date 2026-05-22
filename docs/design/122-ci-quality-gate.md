@@ -59,11 +59,17 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+          pip install -r bootstrap/requirements.txt   # MCP-server deps (mcp, openai)
       - name: Ruff
         run: ruff check .
       - name: Pytest
         run: pytest -q
 ```
+
+**Dependency completeness (caught by the gate's first real run, 2026-05-22)**: the first CI run on `v1.0` went red — the gate immediately earned its keep by surfacing **undeclared dependencies** that pass locally only because the dev's venv happened to have them:
+- `python-multipart` — required at import time to register the webui FastAPI form route (so `import maestro.webui` fails without it). A genuine **runtime** dep; added to pyproject `dependencies`. (Latent shipping gap: a clean `pip install maestro` + `maestro webui` would have failed; the release smoke doesn't exercise webui forms so it never caught this.)
+- `httpx` — required by `fastapi.testclient.TestClient` in the webui tests; test-only, added to `[dev]`.
+- `mcp`, `openai` — the MCP server's core deps live in `bootstrap/requirements.txt` (a deliberate split from pyproject, per the binary-build flow), so the CI install step mirrors `release.yml` and installs them too.
 
 - **Python 3.11** to match `release.yml`. (A `[3.10, 3.11]` matrix to test the `requires-python` floor is a possible follow-up; single version keeps v1.0 cost/scope down.)
 - Action versions `checkout@v4` / `setup-python@v5` — current (no Node-deprecation issue; that roadmap item concerns other repos/workflows, not this one).
