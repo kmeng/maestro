@@ -3,7 +3,7 @@ import re
 import pytest
 from pydantic import ValidationError
 
-from maestro.team import DEFAULT_MODELS, ROLE_IDS, RoleEntry, TeamConfig
+from maestro.team import DEFAULT_MODELS, ROLE_IDS, TeamConfig
 
 
 def _valid_roles_dict() -> dict[str, dict[str, str]]:

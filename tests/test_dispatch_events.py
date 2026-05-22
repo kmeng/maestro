@@ -16,7 +16,7 @@ from maestro.dispatch_log.events import (
     DispatchRefusedConfigInvalidEvent,
     DISPATCH_EVENT_ADAPTER,
 )
-from maestro.dispatch_log.truncation import truncate_field, truncate_event, FIELD_CAPS
+from maestro.dispatch_log.truncation import truncate_field, truncate_event
 
 
 def _utc_now():

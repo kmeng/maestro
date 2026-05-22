@@ -56,7 +56,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("serve", help="Start the MCP server on stdio (for Claude Code).")
 
-    webui = sub.add_parser(
+    sub.add_parser(
         "webui",
         help="Start the Maestro Web UI.",
         add_help=False,  # let the webui launcher own its --help text

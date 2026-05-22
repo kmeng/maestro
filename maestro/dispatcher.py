@@ -19,7 +19,7 @@ from maestro.dispatch_log.events import (
 )
 from maestro.dispatch_log.writer import emit_event
 from maestro.team.models import RoleId
-from maestro.team.resolve import ResolveOk, ResolveRefuse, resolve_role_model
+from maestro.team.resolve import ResolveRefuse, resolve_role_model
 
 
 def _to_fallback_event(
