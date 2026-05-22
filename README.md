@@ -1,5 +1,7 @@
 # Maestro
 
+**English** | [中文](README.zh-CN.md)
+
 > Orchestrate a heterogeneous AI software team. Pay junior prices for senior-level output.
 
 Maestro is an open-source framework that turns Claude Code into the conductor of a complete AI software development team. Instead of burning top-tier model tokens on every task, Maestro routes work to the right specialist at the right cost — Opus for architecture; cheap models (DeepSeek v4-pro / v4-flash today, more providers pluggable) for implementation, document extraction, code review, and commit drafting.
@@ -102,9 +104,8 @@ Cheap models make mistakes. Maestro's job is to catch them before you do.
 
 - **Structured reasoning**: Every worker returns its output alongside its reasoning and a "concerns" section. The conductor sees what the worker was uncertain about.
 - **Test-driven dispatch**: For implementation tasks, the Architect writes tests first, dispatches the implementation, and runs the tests automatically.
-- **Auto-review**: Junior Engineer output above a complexity threshold is reviewed by Senior Engineer before integration.
-- **Confidence escalation**: If a worker reports low confidence, the task is automatically retried by a stronger model.
-- **Full audit log**: Every dispatch, every response, every token count is logged to `~/.maestro/logs/`. Inspect with `maestro logs` or query the JSONL directly.
+- **Auto-review**: Coder output is reviewed by the Reviewer against its spec before integration — a reviewer pass is mandatory before merge.
+- **Full audit log**: Every dispatch, every response, every token count is logged to `~/.maestro/logs/`. Query the JSONL directly, or browse it in the Web UI.
 
 ---
 
@@ -132,7 +133,7 @@ Expand-Archive maestro-windows-x64.zip
 Move-Item maestro\maestro.exe "$env:USERPROFILE\bin\"
 ```
 
-> **macOS first run**: the binary is unsigned in v0.1 (code-signing is planned for v0.2+). macOS Gatekeeper will say *"developer cannot be verified"*. Bypass once: right-click `maestro` in Finder → Open → Open in the dialog. Future runs work normally.
+> **macOS first run**: the binary is currently unsigned (code-signing is planned). macOS Gatekeeper will say *"developer cannot be verified"*. Bypass once: right-click `maestro` in Finder → Open → Open in the dialog. Future runs work normally.
 
 ### 2. Configure your API keys
 
@@ -167,7 +168,7 @@ After install, **restart Claude Code** so it picks up the new MCP server (see [t
 /mcp
 ```
 
-You should see `maestro` listed as **connected** with 6 tools: `coder`, `librarian`, `reviewer`, `scribe`, `verifier`, `spec-writer`.
+You should see `maestro` listed as **connected** with 6 tools: `coder`, `librarian`, `reviewer`, `scribe`, `verifier`, `spec_writer`.
 
 ### Upgrading
 
@@ -233,19 +234,15 @@ Every step shows what was dispatched, what came back, what it cost, and how the 
 
 ## Project status
 
-Maestro is past MVP and used daily by the maintainers. v0.0.4 (the current release branch) adds a Web UI cockpit and two new worker roles (`verifier`, `spec-writer`); v0.0.3 (the foundation release) shipped the four core roles, structured audit logging, and the auto-review quality gate.
+Maestro is past MVP and used daily by the maintainers. **v0.1.0 is the latest release** (single-file binaries for macOS / Linux / Windows); **v1.0 is the current development branch**. The foundation release (v0.0.3) shipped the four core roles, structured audit logging, and the auto-review quality gate; v0.0.4 added the Web UI cockpit and two shadow-mode roles (`verifier`, `spec_writer`).
 
-- ✅ MCP server with 6 worker roles (`coder`, `librarian`, `reviewer`, `scribe`, `verifier`, `spec-writer`)
+- ✅ MCP server with 6 worker tools — four promoted (`coder`, `librarian`, `reviewer`, `scribe`) + two shadow-mode (`verifier`, `spec_writer`)
 - ✅ DeepSeek (v4-pro / v4-flash) providers; Anthropic + Qwen pluggable
 - ✅ Structured reasoning + concerns from every worker
 - ✅ Audit logging to JSONL + per-dispatch cost telemetry
-- ✅ Auto-review quality gate (reviewer is a mandatory pass before merge)
-- ✅ Web UI cockpit (`/`, `/team`, `/wizard`, `/scaffold`, `/live`, `/history`, `/savings`, `/problems`) — replaces the CLI cost dashboard
-- 🔄 Packaging & distribution (pip / homebrew / docker — scheduled for v0.0.5)
-- 📋 Confidence escalation (model self-selects based on task complexity)
-- 📋 Local model support via Ollama
-- 📋 Role marketplace (community-contributed roles)
-- 📋 Benchmarks against SWE-bench subset
+- ✅ Auto-review quality gate (a reviewer pass is mandatory before merge)
+- ✅ Web UI cockpit (`/`, `/team`, `/wizard`, `/scaffold`, `/live`, `/history`, `/savings`, `/problems`)
+- ✅ Single-file binary packaging + GitHub Releases distribution (macOS / Linux / Windows)
 
 Each release is documented in [`docs/journal/`](./docs/journal/); end-of-epic summaries with worker-level cost telemetry land in [`docs/savings.md`](./docs/savings.md).
 
@@ -272,13 +269,13 @@ No. Maestro uses Claude Code as its orchestrator via the standard MCP protocol �
 Because Claude Code's UI, permission system, file diffs, worktree integration, and conversation memory are already excellent. Reinventing that stack is a multi-year project. MCP lets Maestro inherit all of it for free.
 
 **What if I want to use OpenAI / Gemini / local models?**
-Any provider with an OpenAI-compatible endpoint works out of the box. Set the worker's `model:` in your `team.yaml` to the provider's model ID. Provider-specific quirks (Gemini's safety settings, Ollama's local serving) are documented in `docs/providers.md`.
+Any provider with an OpenAI-compatible endpoint works out of the box (this includes local servers like Ollama). Set the worker's `model:` in your `team.yaml` to the provider's model ID — see the team config schema in [`docs/architecture.md`](docs/architecture.md).
 
 **Can I add my own roles?**
-Yes. Roles are defined as YAML + a system prompt template. See `docs/custom-roles.md`. Sharing role configs with the community is encouraged — eventually we want a role marketplace.
+Yes. Roles are defined as YAML + a system-prompt template. See the team config schema in [`docs/architecture.md`](docs/architecture.md).
 
 **How do I know it's actually saving money?**
-Run `maestro stats` after a week. It shows cost per task by role, total saved versus a pure-flagship-model estimate, and which roles you actually used.
+Start the Web UI (`maestro webui`) and open the **`/savings`** page — it shows cost per task and per role, plus total saved versus a pure-flagship-model estimate. The same measured data lives in [`docs/savings.md`](docs/savings.md).
 
 ---
 
@@ -291,7 +288,7 @@ Maestro is in the phase where contributor input shapes the architecture. If you 
 - **Propose a role**: open an issue with the role's purpose, ideal model, and example dispatches.
 - **Improve quality gates**: this is the hardest and most important problem. If you have ideas about catching cheap-model errors, we want to hear them.
 
-See `CONTRIBUTING.md` for the full guide.
+See [`docs/governance.md`](docs/governance.md) for the full contribution and workflow guide.
 
 ---
 
