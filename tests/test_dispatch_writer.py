@@ -8,7 +8,6 @@ import subprocess as _subprocess_module
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
 
 from maestro.dispatch_log.events import DispatchStartEvent, DISPATCH_EVENT_ADAPTER
 from maestro.dispatch_log.truncation import truncate_event
@@ -40,7 +39,7 @@ def test_emit_writes_one_jsonl_line(tmp_path):
     data = log_file.read_bytes()
     assert data.endswith(b"\n")
 
-    lines = [l for l in data.split(b"\n") if l]
+    lines = [ln for ln in data.split(b"\n") if ln]
     assert len(lines) == 1
 
     line = lines[0]
@@ -112,7 +111,7 @@ def test_rotate_at_5mb_threshold(tmp_path):
     archive = archives[0]
     assert archive.stat().st_size == 5 * 1024 * 1024 + 1
 
-    lines = [l for l in log_file.read_bytes().split(b"\n") if l]
+    lines = [ln for ln in log_file.read_bytes().split(b"\n") if ln]
     assert len(lines) == 1
     parsed = DISPATCH_EVENT_ADAPTER.validate_json(lines[0])
     assert parsed.request_id == "rotate-test"

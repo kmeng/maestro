@@ -56,8 +56,8 @@ def main():
         ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]
     ).strip()
 
-    # Verify parent exists.
-    parent_id = gh_api_get_id(repo, parent_num)
+    # Verify parent exists (raises if not found; return value unused).
+    gh_api_get_id(repo, parent_num)
 
     # Create the child issue.
     new_url = gh(

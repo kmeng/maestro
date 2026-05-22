@@ -21,10 +21,17 @@ dependencies = [
 dev = [
     "pytest",
     "pytest-asyncio>=0.21",
+    "ruff==0.15.14",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
+
+[tool.ruff.lint]
+# ruff's default ruleset (pycodestyle E4/E7/E9 + pyflakes F), made explicit so
+# future expansion is a visible diff. NB: this is intentionally NOT the full "E"
+# category — "E" would add E501 (line-length) etc., a larger scope than v1.0 took on.
+select = ["E4", "E7", "E9", "F"]
 
 [project.scripts]
 maestro = "maestro.cli.main:main"

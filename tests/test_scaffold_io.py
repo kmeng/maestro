@@ -4,7 +4,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import pytest
 
 import maestro.scaffold.io as io_module
 from maestro.scaffold.io import (

@@ -8,17 +8,7 @@ from typing import Generator
 import pytest
 from fastapi.testclient import TestClient
 
-from maestro.scaffold.io import (
-    FileFailed,
-    FileStarted,
-    FileSucceeded,
-    PlanComplete,
-)
 from maestro.scaffold.operations import (
-    ConflictReason,
-    Operation,
-    Plan,
-    PlanRow,
     PreflightCheck,
 )
 from maestro.scaffold.templates import render_claude_md_standalone

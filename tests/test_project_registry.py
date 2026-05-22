@@ -3,12 +3,10 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 
 import pytest
 
 from maestro.registry.projects import (
-    ProjectEntry,
     read_registry,
     upsert_project,
     _format_utc_timestamp,
