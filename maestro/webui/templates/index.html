@@ -205,8 +205,11 @@
 
   sparklineTotal.textContent = `共 ${data.cumulative.dispatches} 次`;
 
-  if (data.cumulative.dispatches === 0) {
+  if (data.team.status === 'absent') {
     nowRunningBody.innerHTML = '<a href="/wizard" class="btn btn-primary">开始 → 配置团队</a>';
+    nowRunningMeta.textContent = '';
+  } else if (data.team.status === 'invalid') {
+    nowRunningBody.innerHTML = '<a href="/team" class="btn">团队配置有误 → 去修复</a>';
     nowRunningMeta.textContent = '';
   } else if (data.now_running === null) {
     nowRunningBody.innerHTML = '<div class="empty-run">暂无运行中的调度。</div>';

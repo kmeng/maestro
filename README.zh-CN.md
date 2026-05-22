@@ -232,7 +232,7 @@ Architect(你,在 Claude Code 里):
 
 ## 项目状态
 
-Maestro 已过 MVP 阶段,被维护者日常使用。**v0.1.0 是最新发布版**(macOS / Linux / Windows 的单文件二进制);**v1.0 是当前的开发分支**。基础版(v0.0.3)交付了四个核心角色、结构化审计日志和自动评审质量门;v0.0.4 加上了 Web UI 驾驶舱和两个 shadow 模式角色(`verifier`、`spec_writer`)。
+Maestro 已过 MVP 阶段,被维护者日常使用。**v1.0.0 是最新发布版**(macOS / Linux / Windows 的单文件二进制);**v1.1 是当前的开发分支**。基础版(v0.0.3)交付了四个核心角色、结构化审计日志和自动评审质量门;v0.0.4 加上了 Web UI 驾驶舱和两个 shadow 模式角色(`verifier`、`spec_writer`);v1.0.0 加入了 CI 质量门和仪表盘准确性修复(总览感知团队配置、脚手架展示已应用项目、所有页面显示版本号)。
 
 - ✅ 带 6 个 worker 工具的 MCP server——四个已转正(`coder`、`librarian`、`reviewer`、`scribe`)+ 两个 shadow 模式(`verifier`、`spec_writer`)
 - ✅ DeepSeek(v4-pro / v4-flash)提供方;Anthropic + Qwen 可插拔

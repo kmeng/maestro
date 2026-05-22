@@ -27,6 +27,8 @@ from maestro.savings import (
     read_rows_with_skipped,
     resolve_log_path,
 )
+from maestro.team.io import load_team_config
+from maestro.team.models import TeamConfig
 
 router = APIRouter(prefix="/api", tags=["overview"])
 
@@ -172,7 +174,26 @@ def get_overview() -> dict[str, Any]:
         "active_workers": active_workers,
         "open_problems": open_problems,
         "sparkline_7d": sparkline,
+        "team": {"status": _team_status()},
     }
+
+
+def _team_status() -> str:
+    """Return 'configured' | 'absent' | 'invalid' for the cwd project's team.yaml.
+
+    NEVER raises — the dashboard must render even if team-config resolution
+    fails. Any unexpected exception degrades to 'invalid' (signals
+    "something's off"; never silently re-onboards a configured user).
+    """
+    try:
+        result = load_team_config(Path.cwd())
+    except Exception:
+        return "invalid"
+    if result is None:
+        return "absent"
+    if isinstance(result, TeamConfig):
+        return "configured"
+    return "invalid"
 
 
 def _empty_response(telemetry: str = "active") -> dict[str, Any]:
@@ -193,6 +214,7 @@ def _empty_response(telemetry: str = "active") -> dict[str, Any]:
         "active_workers": 0,
         "open_problems": 0,
         "sparkline_7d": _zero_sparkline(),
+        "team": {"status": _team_status()},
     }
 
 

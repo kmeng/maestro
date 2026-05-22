@@ -340,3 +340,58 @@ Per-task economics in `docs/data/dispatch-log.jsonl`; refresh
    the base template. The full pytest suite stayed green throughout
    the Epic until the very last task's real-data smoke. Reinforces:
    tests written against a spec cannot validate the spec itself.
+
+---
+
+## v1.0.0 — Quality gate & dashboard accuracy
+
+**Date**: 2026-05-23
+**Phase**: 1.0 — the project's first major-version release
+**Branch development name**: v1.0
+
+The 1.0 milestone. Built on the v1.0 dev line as a series of hardening and
+accuracy fixes on top of the v0.1.0 downloadable release. No new Epics of
+feature scope — the theme is "make what shipped correct and trustworthy."
+
+### What shipped
+
+- **CI quality gate (#122)** — GitHub Actions runs `ruff` (pinned 0.15.14,
+  `E`+`F`) + `pytest` on push to `main`/`v*` and on PRs. Its first red run
+  caught a real latent shipping bug: `python-multipart` missing from runtime
+  deps (a clean `pip install maestro` + `maestro webui` would have failed for
+  end users), plus three other dep/env gaps. The gate institutionalized the
+  clean-room verification discipline.
+- **README truth-up + 中文版 (#124/#125)** — fixed non-existent commands, dead
+  links, stale status; added `README.zh-CN.md`.
+- **Epic #127 — WebUI dashboard state accuracy** — three fixes so the cockpit
+  reflects existing configuration, not just dispatch activity:
+  - **#128** — `/api/overview` now reports `team.status`; the "当前运行" panel
+    keys its onboarding CTA to team config (absent/invalid/configured) instead
+    of dispatch count, so a configured team with no dispatches is no longer
+    mistaken for an unconfigured one.
+  - **#129** — `/scaffold` lists already-applied projects from the registry
+    (path + last-opened + take_over plan link), with an empty-state placeholder.
+  - **version display** — `version` registered as a Jinja global so the sidebar
+    shows the running version on every page, not only the index.
+
+### Dogfooding & cost
+
+Every code change above was authored by `coder` (DeepSeek v4-pro) from an
+orchestrator-written spec and gated by a `reviewer` pass before merge — the
+mandatory auto-review quality gate working as designed. Per-dispatch token +
+wall telemetry is recorded in `docs/data/dispatch-log.jsonl`; cumulative
+savings vs an all-flagship baseline are rendered in `docs/savings.md`.
+
+### AI contributors
+
+- **Claude Opus** (orchestrator): analysis, design docs, spec authoring,
+  integration, release management
+- **DeepSeek v4-pro** (`coder` / `reviewer`): code generation + spec-adherence review
+
+### Lessons learned (carry-forward)
+
+1. **A defense layer earns its keep on first contact.** The CI gate found a
+   real `pip install`-breaking dep gap on run #1.
+2. **Surface data the system already has.** #128/#129 were both "the data
+   exists (`team.yaml`, project registry), the view just ignored it" — cheap,
+   high-value accuracy fixes.

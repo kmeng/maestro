@@ -12,11 +12,22 @@ from maestro.dispatch_log.events import (
     DispatchFallbackConfigAbsentEvent,
 )
 from maestro.savings import compute_costs
+from maestro.team.models import TeamConfig, RoleEntry
+from maestro.team.io import TeamConfigInvalid
 
 
 @pytest.fixture
 def client():
     return TestClient(app)
+
+
+def _valid_team():
+    return TeamConfig(schema_version=1, roles={
+        "coder": RoleEntry(member="a", model="m1"),
+        "librarian": RoleEntry(member="b", model="m2"),
+        "reviewer": RoleEntry(member="c", model="m3"),
+        "scribe": RoleEntry(member="d", model="m4"),
+    })
 
 
 def _patch_paths(monkeypatch, events_dir: Path, savings_path: Path, savings_source: str = "active"):
@@ -274,3 +285,59 @@ def test_overview_superseded_excluded_from_savings(tmp_path, client, monkeypatch
     assert data["today"]["savings_usd"] == expected_saved_rounded
     assert data["cumulative"]["savings_usd"] == expected_saved_rounded
     assert data["cumulative"]["savings_pct"] == expected_pct
+
+
+def test_overview_team_absent(tmp_path, client, monkeypatch):
+    events_dir = tmp_path
+    (events_dir / "dispatch.jsonl").write_text("")
+    savings = tmp_path / "s.jsonl"
+    savings.write_text("")
+    _patch_paths(monkeypatch, events_dir, savings)
+    monkeypatch.setattr("maestro.webui.overview_api.load_team_config", lambda _root: None)
+    data = client.get("/api/overview").json()
+    assert data["team"]["status"] == "absent"
+
+
+def test_overview_team_configured(tmp_path, client, monkeypatch):
+    events_dir = tmp_path
+    (events_dir / "dispatch.jsonl").write_text("")
+    savings = tmp_path / "s.jsonl"
+    savings.write_text("")
+    _patch_paths(monkeypatch, events_dir, savings)
+    monkeypatch.setattr("maestro.webui.overview_api.load_team_config", lambda _root: _valid_team())
+    data = client.get("/api/overview").json()
+    assert data["team"]["status"] == "configured"
+
+
+def test_overview_team_invalid(tmp_path, client, monkeypatch):
+    events_dir = tmp_path
+    (events_dir / "dispatch.jsonl").write_text("")
+    savings = tmp_path / "s.jsonl"
+    savings.write_text("")
+    _patch_paths(monkeypatch, events_dir, savings)
+    monkeypatch.setattr("maestro.webui.overview_api.load_team_config", lambda _root: TeamConfigInvalid(reason="broken"))
+    data = client.get("/api/overview").json()
+    assert data["team"]["status"] == "invalid"
+
+
+def test_overview_team_status_swallows_exception(tmp_path, client, monkeypatch):
+    events_dir = tmp_path
+    (events_dir / "dispatch.jsonl").write_text("")
+    savings = tmp_path / "s.jsonl"
+    savings.write_text("")
+    _patch_paths(monkeypatch, events_dir, savings)
+
+    def _boom(_root):
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr("maestro.webui.overview_api.load_team_config", _boom)
+    data = client.get("/api/overview").json()
+    assert data["team"]["status"] == "invalid"
+
+
+def test_overview_team_field_present_when_disabled(client, tmp_path, monkeypatch):
+    _patch_paths(monkeypatch, tmp_path, tmp_path / "s.jsonl", savings_source="disabled")
+    monkeypatch.setattr("maestro.webui.overview_api.load_team_config", lambda _root: None)
+    data = client.get("/api/overview").json()
+    assert data["telemetry"] == "disabled"
+    assert data["team"]["status"] == "absent"
