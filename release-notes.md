@@ -35,3 +35,7 @@ Code signing + notarization is planned for a future release.
 
 - [Upgrade guide](docs/ops/mcp-reload.md) — Claude Code needs a reconnect after upgrade
 - [Build doc](docs/ops/binary-build.md) — how to build the binary yourself
+
+## 社区 / Community
+
+Maestro 由 **挖宝的瓦力** 维护。关注公众号获取 AI 协作方法论与更新，或加微信直接反馈——二维码见仓库 [README「社区 / 联系」](https://github.com/kmeng/maestro#community--contact)。Bug 与建议欢迎来 [GitHub Issues](https://github.com/kmeng/maestro/issues)。
