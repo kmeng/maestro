@@ -89,11 +89,29 @@ jobs:
           else
             BIN=dist/maestro
           fi
-          $BIN --version
-          $BIN --version 2>&1 | grep -q "maestro 0.1.0" || {
-            echo "ERROR: binary produced unexpected version output"
-            exit 1
-          }
+
+          # Capture --version output (stdout+stderr) and print it.
+          VERSION_OUTPUT=$("$BIN" --version 2>&1)
+          printf '%s\n' "$VERSION_OUTPUT"
+
+          # On a tag build, the binary version must match the tag (catches a
+          # forgotten version bump). Otherwise (workflow_dispatch dry-run) just
+          # require a semver shape, since there is no tag to compare against.
+          if [ "$GITHUB_REF_TYPE" == "tag" ]; then
+            EXPECTED_VERSION="${GITHUB_REF_NAME#v}"
+            if ! grep -qF "maestro $EXPECTED_VERSION" <<< "$VERSION_OUTPUT"; then
+              echo "ERROR: binary version output does not match tag" >&2
+              echo "  actual:   $VERSION_OUTPUT" >&2
+              echo "  expected: maestro $EXPECTED_VERSION (from tag $GITHUB_REF_NAME)" >&2
+              exit 1
+            fi
+          else
+            if ! grep -qE 'maestro [0-9]+\.[0-9]+\.[0-9]+' <<< "$VERSION_OUTPUT"; then
+              echo "ERROR: binary produced unexpected version output" >&2
+              echo "  actual: $VERSION_OUTPUT" >&2
+              exit 1
+            fi
+          fi
 
       - name: Package artifact
         shell: bash
