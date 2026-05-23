@@ -1,6 +1,18 @@
+<div align="center">
+<img src="maestro/webui/static/maestro-mark.svg" width="120" alt="Maestro">
+
 # Maestro
 
+**You conduct. The AI plays.** · Pay junior prices for senior-level output.
+
+[![Release](https://img.shields.io/github/v/release/kmeng/maestro)](https://github.com/kmeng/maestro/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-d97757.svg)](https://claude.com/claude-code)
+[![Self-built by AI](https://img.shields.io/badge/self--built%20by-AI-7c3aed.svg)](BUILD_LOG.md)
+
 **English** | [中文](README.zh-CN.md)
+</div>
 
 > Orchestrate a heterogeneous AI software team. Pay junior prices for senior-level output.
 
@@ -289,6 +301,21 @@ Maestro is in the phase where contributor input shapes the architecture. If you 
 - **Improve quality gates**: this is the hardest and most important problem. If you have ideas about catching cheap-model errors, we want to hear them.
 
 See [`docs/governance.md`](docs/governance.md) for the full contribution and workflow guide.
+
+---
+
+## Community / Contact
+
+Maestro is built and maintained by **挖宝的瓦力**. Follow along, get help, or share feedback:
+
+<table><tr>
+<td align="center"><b>WeChat Official Account</b><br>
+<img src="maestro/webui/static/qr-wechat-mp.jpg" width="180"><br>Methodology &amp; updates</td>
+<td align="center"><b>WeChat (personal)</b><br>
+<img src="maestro/webui/static/qr-wechat-personal.jpg" width="180"><br>Add me for direct feedback</td>
+<td align="center"><b>GitHub</b><br>
+<a href="https://github.com/kmeng/maestro/issues">Issues</a> · Star ⭐<br>Bugs, ideas, contributions</td>
+</tr></table>
 
 ---
 

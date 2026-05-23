@@ -109,12 +109,25 @@ async def about(request: Request):
 
 ---
 
+---
+
+## 后续触点（拉新）— #135 / #136（2026-05-23 纳入，随 v1.0.1 发布）
+
+WebUI funnel（任务 1/2）触达的是**已安装并运行 Maestro 的用户**（留存/转化）。拉新靠 GitHub 入口，故补两个触点：
+
+### #135 README 品牌头 + 社区区（README.md / README.zh-CN.md）
+- **顶部品牌头**：居中 logo（`maestro/webui/static/maestro-mark.svg`，`<img width="120">`）+ `# Maestro` + slogan（英文版 *You conduct. The AI plays.* / 中文版「你来指挥，AI 来演奏」）+ 5 个 badge（Release 动态 / MIT / Python 3.10+ / Built with Claude Code / Self-built by AI→BUILD_LOG.md）+ 语言切换，外包 `<div align="center">`。
+- **社区区**（Contributing 之后、License 之前）：公众号 + 私人微信二维码（`<img width="180">`）+「挖宝的瓦力」+ GitHub Issues 链接。两份 README 对齐。
+- H3：README 改动的专属 issue=#135（维护者明确指示）。文档由 orchestrator 直接撰写（markdown 文档，内容经维护者逐字确认）。
+
+### #136 release-notes.md 社区页脚
+- 仓库根 `release-notes.md`（release.yml 在 tag 时 `--notes-file` 读取）末尾加「社区 / Community」页脚：文字 + 指向 README 社区区（`#community--contact`）与 GitHub Issues。release notes 不嵌本地图。
+
 ## 不在范围内
 
-- 改 README（H3，单独 issue/PR）。
 - 后端表单 / 留言收集（关于页纯静态展示）。
-- CLI / Release notes 引流触点（后续挂在 epic 下）。
-- 改 WebUI `--accent` 主题色 / ADR-0012（见 Open questions）。
+- CLI 引流触点（后续可挂本 epic）。
+- 改 WebUI `--accent` 主题色 / ADR-0012（保留品牌色，已定）。
 
 ## 任务拆分（各一个本地分支，merge 进 v1.1；先失败测试后实现）
 
