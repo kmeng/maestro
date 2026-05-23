@@ -1,0 +1,37 @@
+{% extends "_base.html" %}
+{% set nav_active = "about" %}
+{% block title %}关于{% endblock %}
+{% block content %}
+  <h1 class="page-h1">关于 Maestro</h1>
+
+  <section class="panel about-hero">
+    <img class="about-logo" src="/static/maestro-mark.svg" alt="Maestro logo">
+    <div class="about-hero-text">
+      <div class="about-wordmark">Maestro</div>
+      <div class="about-slogan">你来指挥，AI 来演奏</div>
+      <div class="about-slogan-sub">用初级的价，拿资深的活</div>
+      <p class="about-intro">Maestro 把 Claude Code 变成一支异构 AI 软件团队的指挥者：架构交给旗舰模型，实现、评审、文档交给便宜模型，成本约为纯旗舰工作流的 10–20%，并有质量门在便宜模型出错时兜底。</p>
+    </div>
+  </section>
+
+  <div class="about-qr-row">
+    <section class="panel about-qr">
+      <h2 class="panel-title">公众号</h2>
+      <img class="qr-img" src="/static/qr-wechat-mp.jpg" alt="公众号二维码 · 挖宝的瓦力">
+      <div class="about-qr-name">挖宝的瓦力</div>
+      <div class="about-qr-cta">扫码关注，获取 AI 协作方法论与更新</div>
+    </section>
+    <section class="panel about-qr">
+      <h2 class="panel-title">私人微信</h2>
+      <img class="qr-img" src="/static/qr-wechat-personal.jpg" alt="私人微信二维码 · 挖宝的瓦力">
+      <div class="about-qr-name">挖宝的瓦力</div>
+      <div class="about-qr-cta">扫码加我，直接提建议</div>
+    </section>
+  </div>
+
+  <section class="panel about-gh">
+    <h2 class="panel-title">在 GitHub 上反馈</h2>
+    <p class="about-gh-text">有 bug、建议或想参与开发？欢迎来 GitHub 提 issue 或点个 Star。</p>
+    <a class="btn" href="https://github.com/kmeng/maestro/issues" target="_blank" rel="noopener">去 GitHub 提 issue / Star ⭐</a>
+  </section>
+{% endblock %}
