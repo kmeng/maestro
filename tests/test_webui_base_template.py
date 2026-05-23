@@ -67,3 +67,20 @@ def test_version_shown_on_non_index_pages():
     # /scaffold is a non-index page that extends _base.html
     body = client.get("/scaffold").text
     assert f"v{maestro.__version__}" in body
+
+
+def test_base_template_has_brand_logo_and_favicon():
+    html = _render_child({"version": "0.0.4"})
+    assert 'class="brand-dot"' not in html
+    assert 'class="brand-logo"' in html
+    assert '/static/maestro-mark-sm.svg' in html
+    assert '<link rel="icon"' in html
+    assert 'type="image/svg+xml"' in html
+
+
+def test_base_template_has_maker_credit():
+    html = _render_child({"version": "0.0.4"})
+    assert 'class="sb-maker"' in html
+    assert "挖宝的瓦力" in html
+    # 署名链接到 /about
+    assert 'href="/about"' in html

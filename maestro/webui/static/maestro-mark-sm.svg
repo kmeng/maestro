@@ -1,0 +1,22 @@
+<svg viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Maestro">
+  <defs>
+    <linearGradient id="marksm-gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FDE68A"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+    <linearGradient id="marksm-violet" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#6D28D9"/>
+    </linearGradient>
+  </defs>
+
+  <!-- node -->
+  <circle cx="128" cy="128" r="112" fill="url(#marksm-violet)"/>
+  <circle cx="128" cy="128" r="112" fill="none" stroke="url(#marksm-gold)" stroke-width="9"/>
+
+  <!-- the M, scaled to fill for small-size legibility -->
+  <path d="M74 180 L74 78 L128 130 L182 78 L182 180"
+        stroke="url(#marksm-gold)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- downbeat point -->
+  <circle cx="128" cy="130" r="11" fill="#FFF8E1"/>
+</svg>

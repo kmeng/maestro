@@ -1,8 +1,18 @@
-# Maestro <tag>
+# Maestro v1.0.1
 
 ## What's new
 
-(Edit before tagging.)
+Brand & community round — completing what 1.0 should have shipped:
+
+- **Logo & slogan** — Maestro now has a visual mark (sidebar + favicon) and a
+  slogan: *You conduct. The AI plays. · Pay junior prices for senior-level output.*
+- **About page** (`/about` in the Web UI) — project intro, WeChat official
+  account + personal WeChat QR codes, and a GitHub Issues link; reachable from a
+  sidebar credit on every page.
+- **README brand header + Community section** — logo, badges, and contact/QR
+  codes for new visitors.
+
+No functional/runtime behavior changes; this is a branding and docs release.
 
 ## Install
 
@@ -35,3 +45,7 @@ Code signing + notarization is planned for a future release.
 
 - [Upgrade guide](docs/ops/mcp-reload.md) — Claude Code needs a reconnect after upgrade
 - [Build doc](docs/ops/binary-build.md) — how to build the binary yourself
+
+## 社区 / Community
+
+Maestro 由 **挖宝的瓦力** 维护。关注公众号获取 AI 协作方法论与更新，或加微信直接反馈——二维码见仓库 [README「社区 / 联系」](https://github.com/kmeng/maestro#community--contact)。Bug 与建议欢迎来 [GitHub Issues](https://github.com/kmeng/maestro/issues)。

@@ -395,3 +395,59 @@ savings vs an all-flagship baseline are rendered in `docs/savings.md`.
 2. **Surface data the system already has.** #128/#129 were both "the data
    exists (`team.yaml`, project registry), the view just ignored it" — cheap,
    high-value accuracy fixes.
+
+---
+
+## v1.0.1 — Brand & community funnel
+
+**Date**: 2026-05-23
+**Phase**: 1.0 — patch release
+**Branch development name**: v1.1 (released as 1.0.1)
+
+A brand round, retro-fitting what 1.0 should have had: a visual identity and a
+way for users to reach the maintainer. Framed as completing 1.0 rather than a
+new feature line (epic #132).
+
+### What shipped
+
+- **Logo & slogan (#133)** — the Maestro mark (a gold "M" node ringed by an AI
+  network of spark points) lands as `maestro-mark.svg` + a simplified
+  `maestro-mark-sm.svg`; wired into the WebUI sidebar and favicon, with a brand
+  guide (`docs/branding/README.md`). Slogan: 你来指挥，AI 来演奏 / 用初级的价，
+  拿资深的活 (You conduct. The AI plays. / Pay junior prices for senior output).
+- **About page (#134)** — `/about` is the first landing page of the community
+  feedback funnel: logo + slogan intro, WeChat official-account QR, personal
+  WeChat QR, GitHub Issues link. A sidebar footer credit (由 挖宝的瓦力 出品)
+  links to it from every page.
+- **README brand header + community section (#135)** — centered logo, slogan,
+  and five badges atop README.md / README.zh-CN.md, plus a "Community / Contact"
+  section with both QR codes — the acquisition-facing entry for GitHub visitors.
+- **Release-notes community footer (#136)** — every published release now points
+  readers to the community channels.
+
+### Dogfooding & cost
+
+Code wiring (#133 sidebar/favicon, #134 about route/template/tests) was authored
+by `coder` (DeepSeek v4-pro/flash) from orchestrator specs and gated by a
+`reviewer` pass; commit messages drafted by `scribe`. Brand assets (SVG) and
+documentation (READMEs, brand guide, release notes) were authored directly by
+the orchestrator. Two dogfooding notes: a `coder` dispatch returned an empty
+body once (retried clean), and `scribe` flagged an output-schema warning in
+commit-message mode (body still usable). Per-dispatch telemetry in
+`docs/data/dispatch-log.jsonl`; savings in `docs/savings.md`.
+
+### AI contributors
+
+- **Claude Opus** (orchestrator): brand/logo design, slogan, spec authoring,
+  documentation, integration, release management
+- **DeepSeek v4-pro / v4-flash** (`coder` / `reviewer` / `scribe`): WebUI wiring,
+  spec-adherence review, commit-message drafting
+
+### Lessons learned (carry-forward)
+
+1. **A local WebUI funnel converts existing users; acquisition needs the README.**
+   `/about` only reaches people already running Maestro — the README community
+   section + release-notes footer are what reach new GitHub visitors.
+2. **Trust but verify cheap workers.** An empty `coder` return and a `scribe`
+   schema warning both surfaced this round; a retry / using the raw field
+   recovered without hand-authoring the spec'd work.

@@ -70,11 +70,11 @@ button {
   margin-bottom: 4px;
 }
 
-.brand-dot {
-  width: 12px;
-  height: 12px;
-  background: var(--accent);
-  border-radius: 3px;
+.brand-logo {
+  width: 28px;
+  height: 28px;
+  display: block;
+  flex-shrink: 0;
 }
 
 .brand-name {
@@ -87,7 +87,7 @@ button {
   font-size: 11px;
   color: var(--muted);
   margin-bottom: 28px;
-  padding-left: 30px;
+  padding-left: 46px;
 }
 
 .nav {
@@ -547,4 +547,85 @@ button {
     text-align: center;
   }
   /* v1 limitation: no icons — navigation becomes blank rectangles below 1024px */
+}
+
+/* 维护者署名 */
+.sb-maker {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 8px 10px;
+}
+.sb-maker a {
+  color: var(--accent);
+}
+
+/* 关于页 */
+.about-hero {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  max-width: 760px;
+}
+.about-logo {
+  width: 104px;
+  height: 104px;
+  flex-shrink: 0;
+}
+.about-wordmark {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.about-slogan {
+  font-size: 18px;
+  font-weight: 600;
+  margin-top: 6px;
+}
+.about-slogan-sub {
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.about-intro {
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--fg);
+  margin-top: 12px;
+}
+.about-qr-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  max-width: 760px;
+}
+.about-qr {
+  flex: 1;
+  min-width: 240px;
+  text-align: center;
+}
+.qr-img {
+  width: 200px;
+  height: 200px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  margin: 12px 0 8px;
+}
+.about-qr-name {
+  font-weight: 600;
+}
+.about-qr-cta {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.about-gh {
+  max-width: 760px;
+  margin-top: 16px;
+}
+.about-gh-text {
+  font-size: 13.5px;
+  color: var(--fg);
+  margin-bottom: 12px;
 }

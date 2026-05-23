@@ -1,6 +1,18 @@
+<div align="center">
+<img src="maestro/webui/static/maestro-mark.svg" width="120" alt="Maestro">
+
 # Maestro
 
+**你来指挥，AI 来演奏** · 用初级的价，拿资深的活
+
+[![Release](https://img.shields.io/github/v/release/kmeng/maestro)](https://github.com/kmeng/maestro/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-d97757.svg)](https://claude.com/claude-code)
+[![Self-built by AI](https://img.shields.io/badge/self--built%20by-AI-7c3aed.svg)](BUILD_LOG.md)
+
 [English](README.md) | **中文**
+</div>
 
 > 编排一支异构的 AI 软件开发团队。用初级的价格,拿到资深级的产出。
 
@@ -232,7 +244,7 @@ Architect(你,在 Claude Code 里):
 
 ## 项目状态
 
-Maestro 已过 MVP 阶段,被维护者日常使用。**v1.0.0 是最新发布版**(macOS / Linux / Windows 的单文件二进制);**v1.1 是当前的开发分支**。基础版(v0.0.3)交付了四个核心角色、结构化审计日志和自动评审质量门;v0.0.4 加上了 Web UI 驾驶舱和两个 shadow 模式角色(`verifier`、`spec_writer`);v1.0.0 加入了 CI 质量门和仪表盘准确性修复(总览感知团队配置、脚手架展示已应用项目、所有页面显示版本号)。
+Maestro 已过 MVP 阶段,被维护者日常使用。**v1.0.1 是最新发布版**(macOS / Linux / Windows 的单文件二进制)。基础版(v0.0.3)交付了四个核心角色、结构化审计日志和自动评审质量门;v0.0.4 加上了 Web UI 驾驶舱和两个 shadow 模式角色(`verifier`、`spec_writer`);v1.0.0 加入了 CI 质量门和仪表盘准确性修复(总览感知团队配置、脚手架展示已应用项目、所有页面显示版本号);v1.0.1 补全了视觉品牌(logo + slogan)、关于页(社区反馈入口)和 README 社区区。
 
 - ✅ 带 6 个 worker 工具的 MCP server——四个已转正(`coder`、`librarian`、`reviewer`、`scribe`)+ 两个 shadow 模式(`verifier`、`spec_writer`)
 - ✅ DeepSeek(v4-pro / v4-flash)提供方;Anthropic + Qwen 可插拔
@@ -287,6 +299,21 @@ Maestro 正处在贡献者意见能塑造架构的阶段。如果你想帮忙:
 - **改进质量门**:这是最难也最重要的问题。如果你有关于抓便宜模型错误的想法,我们很想听。
 
 完整的贡献与工作流指南见 [`docs/governance.md`](docs/governance.md)。
+
+---
+
+## 社区 / 联系
+
+Maestro 由 **挖宝的瓦力** 开发与维护。欢迎关注、交流、反馈:
+
+<table><tr>
+<td align="center"><b>公众号</b><br>
+<img src="maestro/webui/static/qr-wechat-mp.jpg" width="180"><br>方法论 &amp; 更新</td>
+<td align="center"><b>私人微信</b><br>
+<img src="maestro/webui/static/qr-wechat-personal.jpg" width="180"><br>扫码加我,直接提建议</td>
+<td align="center"><b>GitHub</b><br>
+<a href="https://github.com/kmeng/maestro/issues">Issues</a> · Star ⭐<br>Bug、想法、共建</td>
+</tr></table>
 
 ---
 

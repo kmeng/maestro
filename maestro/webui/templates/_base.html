@@ -5,12 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Maestro · {% block title %}{% endblock %}</title>
   <link rel="stylesheet" href="/static/maestro.css">
+  <link rel="icon" type="image/svg+xml" href="/static/maestro-mark-sm.svg">
   {% block extra_head %}{% endblock %}
 </head>
 <body>
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-dot"></div>
+      <img class="brand-logo" src="/static/maestro-mark-sm.svg" alt="Maestro" width="28" height="28">
       <div class="brand-name">Maestro</div>
     </div>
     <div class="brand-sub">v{{ version or '' }} · 本地</div>
@@ -22,8 +23,10 @@
       <a href="/history" class="{% if nav_active == 'history' %}active{% endif %}" {% if nav_active == 'history' %}aria-current="page"{% endif %}>历史</a>
       <a href="/savings" class="{% if nav_active == 'savings' %}active{% endif %}" {% if nav_active == 'savings' %}aria-current="page"{% endif %}>成本节省</a>
       <a href="/problems" class="{% if nav_active == 'problems' %}active{% endif %}" {% if nav_active == 'problems' %}aria-current="page"{% endif %}>问题</a>
+      <a href="/about" class="{% if nav_active == 'about' %}active{% endif %}" {% if nav_active == 'about' %}aria-current="page"{% endif %}>关于</a>
     </nav>
     <div class="sidebar-spacer"></div>
+    <div class="sb-maker">由 <a href="/about">挖宝的瓦力</a> 出品</div>
     <div class="sb-footer"><span class="dot-ok"></span> 运行正常</div>
   </aside>
   <main class="main">
