@@ -5,12 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Maestro · {% block title %}{% endblock %}</title>
   <link rel="stylesheet" href="/static/maestro.css">
+  <link rel="icon" type="image/svg+xml" href="/static/maestro-mark-sm.svg">
   {% block extra_head %}{% endblock %}
 </head>
 <body>
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-dot"></div>
+      <img class="brand-logo" src="/static/maestro-mark-sm.svg" alt="Maestro" width="28" height="28">
       <div class="brand-name">Maestro</div>
     </div>
     <div class="brand-sub">v{{ version or '' }} · 本地</div>
