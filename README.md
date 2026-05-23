@@ -246,7 +246,7 @@ Every step shows what was dispatched, what came back, what it cost, and how the 
 
 ## Project status
 
-Maestro is past MVP and used daily by the maintainers. **v1.0.0 is the latest release** (single-file binaries for macOS / Linux / Windows); **v1.1 is the current development branch**. The foundation release (v0.0.3) shipped the four core roles, structured audit logging, and the auto-review quality gate; v0.0.4 added the Web UI cockpit and two shadow-mode roles (`verifier`, `spec_writer`); v1.0.0 added the CI quality gate and dashboard accuracy fixes (team-aware overview, applied-projects list, all-pages version display).
+Maestro is past MVP and used daily by the maintainers. **v1.0.1 is the latest release** (single-file binaries for macOS / Linux / Windows). The foundation release (v0.0.3) shipped the four core roles, structured audit logging, and the auto-review quality gate; v0.0.4 added the Web UI cockpit and two shadow-mode roles (`verifier`, `spec_writer`); v1.0.0 added the CI quality gate and dashboard accuracy fixes (team-aware overview, applied-projects list, all-pages version display); v1.0.1 added the visual brand (logo + slogan), an About page (community feedback entry), and a README community section.
 
 - ✅ MCP server with 6 worker tools — four promoted (`coder`, `librarian`, `reviewer`, `scribe`) + two shadow-mode (`verifier`, `spec_writer`)
 - ✅ DeepSeek (v4-pro / v4-flash) providers; Anthropic + Qwen pluggable

@@ -1,8 +1,18 @@
-# Maestro <tag>
+# Maestro v1.0.1
 
 ## What's new
 
-(Edit before tagging.)
+Brand & community round — completing what 1.0 should have shipped:
+
+- **Logo & slogan** — Maestro now has a visual mark (sidebar + favicon) and a
+  slogan: *You conduct. The AI plays. · Pay junior prices for senior-level output.*
+- **About page** (`/about` in the Web UI) — project intro, WeChat official
+  account + personal WeChat QR codes, and a GitHub Issues link; reachable from a
+  sidebar credit on every page.
+- **README brand header + Community section** — logo, badges, and contact/QR
+  codes for new visitors.
+
+No functional/runtime behavior changes; this is a branding and docs release.
 
 ## Install
 
