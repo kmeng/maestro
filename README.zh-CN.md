@@ -1,6 +1,18 @@
+<div align="center">
+<img src="maestro/webui/static/maestro-mark.svg" width="120" alt="Maestro">
+
 # Maestro
 
+**你来指挥，AI 来演奏** · 用初级的价，拿资深的活
+
+[![Release](https://img.shields.io/github/v/release/kmeng/maestro)](https://github.com/kmeng/maestro/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-d97757.svg)](https://claude.com/claude-code)
+[![Self-built by AI](https://img.shields.io/badge/self--built%20by-AI-7c3aed.svg)](BUILD_LOG.md)
+
 [English](README.md) | **中文**
+</div>
 
 > 编排一支异构的 AI 软件开发团队。用初级的价格,拿到资深级的产出。
 
@@ -287,6 +299,21 @@ Maestro 正处在贡献者意见能塑造架构的阶段。如果你想帮忙:
 - **改进质量门**:这是最难也最重要的问题。如果你有关于抓便宜模型错误的想法,我们很想听。
 
 完整的贡献与工作流指南见 [`docs/governance.md`](docs/governance.md)。
+
+---
+
+## 社区 / 联系
+
+Maestro 由 **挖宝的瓦力** 开发与维护。欢迎关注、交流、反馈:
+
+<table><tr>
+<td align="center"><b>公众号</b><br>
+<img src="maestro/webui/static/qr-wechat-mp.jpg" width="180"><br>方法论 &amp; 更新</td>
+<td align="center"><b>私人微信</b><br>
+<img src="maestro/webui/static/qr-wechat-personal.jpg" width="180"><br>扫码加我,直接提建议</td>
+<td align="center"><b>GitHub</b><br>
+<a href="https://github.com/kmeng/maestro/issues">Issues</a> · Star ⭐<br>Bug、想法、共建</td>
+</tr></table>
 
 ---
 
