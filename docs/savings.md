@@ -1,11 +1,13 @@
 # Dispatch Savings
 
-Across 81 closed task(s), 207 dispatch(es) captured 1,435,500 total tokens. At provider rates, this cost $0.87; estimated baseline at Opus rates would be $66.22 — a conservative lower-bound saving of $65.35 (98.7%). All numbers in the table below come from worker-API responses captured at dispatch time; see methodology for what is measured vs estimated.
+Across 83 closed task(s), 213 dispatch(es) captured 1,456,478 total tokens. At provider rates, this cost $0.88; estimated baseline at Opus rates would be $67.16 — a conservative lower-bound saving of $66.28 (98.7%). All numbers in the table below come from worker-API responses captured at dispatch time; see methodology for what is measured vs estimated.
 
 ## Per-Task Savings
 
 | Task | Closed | Issue | Dispatches | Tokens | Wall (s) | Est. Opus $ | Worker $ | Saved | Status |
 |------|--------|-------|------------|--------|----------|-------------|----------|-------|--------|
+| 134 |  | [#134](https://github.com/kmeng/maestro/issues/134) | 2 (c1 l0 r1 s0 v0 w0) | 10,024 | 98 | $0.44 | $0.01 | $0.43 (98.5%) | ✓ |
+| 133 |  | [#133](https://github.com/kmeng/maestro/issues/133) | 4 (c2 l0 r1 s1 v0 w0) | 10,954 | 116 | $0.50 | $0.01 | $0.50 (98.6%) | ✓ |
 | T127.B |  | [#129](https://github.com/kmeng/maestro/issues/129) | 3 (c2 l0 r1 s0 v0 w0) | 8,794 | 109 | $0.46 | $0.01 | $0.46 (98.5%) | ✓ |
 | T127.A |  | [#128](https://github.com/kmeng/maestro/issues/128) | 3 (c2 l0 r1 s0 v0 w0) | 9,778 | 116 | $0.50 | $0.01 | $0.49 (98.5%) | ✓ |
 | T127.C |  | [#127](https://github.com/kmeng/maestro/issues/127) | 2 (c1 l0 r1 s0 v0 w0) | 4,256 | 63 | $0.24 | $0.00 | $0.23 (98.5%) | ✓ |
@@ -92,10 +94,10 @@ Across 81 closed task(s), 207 dispatch(es) captured 1,435,500 total tokens. At p
 
 | Role | Dispatches | Total tokens | Avg tokens/call | Avg wall (s) | Total worker $ | Total est. Opus $ |
 |------|------------|---------------|-----------------|--------------|----------------|-------------------|
-| Coder | 75 | 674,343 | 8991 | 175.3 | $0.51 | $33.99 |
+| Coder | 78 | 687,803 | 8818 | 170.6 | $0.52 | $34.65 |
 | Librarian | 28 | 225,525 | 8054 | 31.8 | $0.03 | $7.69 |
-| Reviewer | 70 | 410,154 | 5859 | 101.5 | $0.29 | $19.06 |
-| Scribe | 18 | 44,743 | 2486 | 12.6 | $0.01 | $1.82 |
+| Reviewer | 72 | 415,595 | 5772 | 99.4 | $0.29 | $19.27 |
+| Scribe | 19 | 46,820 | 2464 | 12.3 | $0.01 | $1.88 |
 | Spec-writer | 1 | 5,663 | 5663 | 22.7 | $0.00 | $0.27 |
 | Verifier | 1 | 4,072 | 4072 | 14.3 | $0.00 | $0.20 |
 
@@ -104,5 +106,5 @@ Across 81 closed task(s), 207 dispatch(es) captured 1,435,500 total tokens. At p
 ---
 
 *Methodology: [docs/savings-methodology.md](savings-methodology.md)*  
-*Last updated: 2026-05-23T05:47:56Z*  
+*Last updated: 2026-05-23T09:41:50Z*  
 *Source: [dispatch-log.jsonl](data/dispatch-log.jsonl)*
