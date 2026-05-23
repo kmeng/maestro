@@ -1,0 +1,72 @@
+<svg viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Maestro">
+  <defs>
+    <linearGradient id="mark-gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FDE68A"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+    <linearGradient id="mark-violet" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#6D28D9"/>
+    </linearGradient>
+    <radialGradient id="mark-halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#F59E0B" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#F59E0B" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="mark-glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="3.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <g stroke="url(#mark-gold)" stroke-linecap="round" filter="url(#mark-glow)">
+    <path d="M128 128 L220 128" stroke-width="5.5"/>
+    <path d="M128 128 L178 157" stroke-width="3"/>
+    <path d="M128 128 L174 208" stroke-width="5.5"/>
+    <path d="M128 128 L128 186" stroke-width="3"/>
+    <path d="M128 128 L82 208" stroke-width="5.5"/>
+    <path d="M128 128 L78 157" stroke-width="3"/>
+    <path d="M128 128 L36 128" stroke-width="5.5"/>
+    <path d="M128 128 L78 99" stroke-width="3"/>
+    <path d="M128 128 L82 48" stroke-width="5.5"/>
+    <path d="M128 128 L128 70" stroke-width="3"/>
+    <path d="M128 128 L174 48" stroke-width="5.5"/>
+    <path d="M128 128 L178 99" stroke-width="3"/>
+  </g>
+
+  <path d="M220 128 L178 157 L174 208 L128 186 L82 208 L78 157 L36 128 L78 99 L82 48 L128 70 L174 48 L178 99 Z"
+        stroke="#7C3AED" stroke-opacity="0.38" stroke-width="2" fill="none" stroke-linejoin="round"/>
+
+  <g fill="#FFF8E1" fill-opacity="0.85">
+    <circle cx="183" cy="128" r="2.6"/>
+    <circle cx="156" cy="176" r="2.6"/>
+    <circle cx="100" cy="176" r="2.6"/>
+    <circle cx="73" cy="128" r="2.6"/>
+    <circle cx="100" cy="80" r="2.6"/>
+    <circle cx="156" cy="80" r="2.6"/>
+  </g>
+
+  <g filter="url(#mark-glow)">
+    <circle cx="220" cy="128" r="8" fill="#F59E0B"/>
+    <circle cx="174" cy="208" r="8" fill="#7C3AED"/>
+    <circle cx="82" cy="208" r="8" fill="#F59E0B"/>
+    <circle cx="36" cy="128" r="8" fill="#7C3AED"/>
+    <circle cx="82" cy="48" r="8" fill="#F59E0B"/>
+    <circle cx="174" cy="48" r="8" fill="#7C3AED"/>
+    <circle cx="178" cy="157" r="5" fill="#7C3AED"/>
+    <circle cx="128" cy="186" r="5" fill="#F59E0B"/>
+    <circle cx="78" cy="157" r="5" fill="#7C3AED"/>
+    <circle cx="78" cy="99" r="5" fill="#F59E0B"/>
+    <circle cx="128" cy="70" r="5" fill="#7C3AED"/>
+    <circle cx="178" cy="99" r="5" fill="#F59E0B"/>
+  </g>
+
+  <circle cx="128" cy="128" r="40" fill="url(#mark-halo)"/>
+
+  <circle cx="128" cy="128" r="34" fill="url(#mark-violet)"/>
+  <circle cx="128" cy="128" r="34" fill="none" stroke="url(#mark-gold)" stroke-width="2.5"/>
+
+  <path d="M111 145 L111 113 L128 129 L145 113 L145 145"
+        stroke="url(#mark-gold)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"
+        filter="url(#mark-glow)"/>
+  <circle cx="128" cy="129" r="3.5" fill="#FFF8E1"/>
+</svg>
